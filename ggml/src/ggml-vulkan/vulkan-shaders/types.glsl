@@ -1401,11 +1401,18 @@ struct block_tq2_0
     float16_t d;
 };
 
+struct block_tq2_0_packed32
+{
+    uint32_t qs[QUANT_K_TQ2_0/QUANT_R_TQ2_0/4];  // 16 x uint32_t = 64 bytes
+    float16_t d;
+};
+
 #if defined(DATA_A_TQ2_0)
 #define QUANT_K QUANT_K_TQ2_0
 #define QUANT_R QUANT_R_TQ2_0
 #define QUANT_AUXF 1
 #define A_TYPE block_tq2_0
+#define A_TYPE_PACKED32 block_tq2_0_packed32
 #endif
 
 #define QUANT_K_MXFP4 32
