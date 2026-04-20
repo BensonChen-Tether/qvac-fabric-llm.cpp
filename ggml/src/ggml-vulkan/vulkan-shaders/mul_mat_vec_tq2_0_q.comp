@@ -2,6 +2,9 @@
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_integer_dot_product : require
 
+#ifndef USE_SUBGROUP_ADD_NO_SHMEM
+#define USE_SUBGROUP_ADD_NO_SHMEM 1
+#endif
 #define MMQ
 #define B_TYPE block_q8_1_x4
 
