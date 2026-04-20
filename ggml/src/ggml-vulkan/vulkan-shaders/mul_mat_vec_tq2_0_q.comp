@@ -28,64 +28,88 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
     const uint k   = (tid % 8) * 4;   // byte offset inside a 32-byte half
     const uint vec_idx = k / 4;       // 0..7, into qs[8] of an inner B sub-block
 
+    // Precompute the A-row base offsets up to NUM_ROWS once, so we can unroll
+    // the per-row inner loop and keep `temp[jcol][n]` in registers.
+    uint ib0_row[NUM_ROWS];
+    [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
+        ib0_row[n] = a_offset / QUANT_K + (first_row + n) * num_blocks_per_row;
+    }
+
     for (uint jcol = 0; jcol < NUM_COLS; jcol++) {
         const uint b_base = (jcol * p.batch_stride_b);
 
-        for (uint n = 0; n < num_rows; ++n) {
-            const uint ib0 = a_offset / QUANT_K + (first_row + n) * num_blocks_per_row;
-            FLOAT_TYPE acc = 0.0f;
+        // Loop order: i (K-block) outermost, then row n innermost. This lets
+        // us load each block_q8_1_x4 of B exactly ONCE per K-block and reuse
+        // it across all `num_rows` rows handled by this workgroup (NUM_ROWS=2
+        // on Adreno), halving B-side LSU traffic.
+        for (uint i = tid/8; i < num_blocks_per_row; i += gl_WorkGroupSize.x/8) {
+            // Each K=256 block has two "halves" (j=0 and j=32). Each half's
+            // four shift levels (0/2/4/6) map 1:1 to the four inner
+            // sub-blocks of ONE block_q8_1_x4 -> we can amortize B loads.
+            [[unroll]] for (uint h = 0; h < 2; ++h) {
+                const uint j = h * 32u;
 
-            for (uint i = tid/8; i < num_blocks_per_row; i += gl_WorkGroupSize.x/8) {
-                // Fuse the two scaling constants once per K-block:
-                //   term0 =  d * dsX.x            (scale for the dot product)
-                //   term1 = -d * (1/8) * dsX.y    (q in {0,1,2} = real+1  =>  subtract 1 * sum(B))
-                const float d      =  float(data_a[ib0 + i].d);
-                const float d_neg8 = -d * 0.125f;
+                // ---------------- B: load once, reuse across rows ----------------
+                // b_first is the first inner-block index (a multiple of 4 because
+                // j*4 is a multiple of QUANT_K_Q8_1 * 4), so b_outer = b_first / 4.
+                // Addressing mirrors mul_mat_vec_tq1_0_q.comp so that semantics
+                // match the original shader for every call site.
+                const uint b_first = b_offset + (b_base + i * QUANT_K + j * 4u) / QUANT_K_Q8_1;
+                const uint b_outer = b_first / 4u;
 
-                // Each K=256 block has two "halves" (j=0 and j=32). Each half's
-                // four shift levels (0/2/4/6) map 1:1 to the four inner
-                // sub-blocks of ONE block_q8_1_x4 -> we can amortize B loads.
-                [[unroll]] for (uint h = 0; h < 2; ++h) {
-                    const uint j = h * 32u;
+                // Pack all four (ds.x, ds.y) pairs into vec4s so the compiler
+                // can emit two wide FP16->FP32 loads instead of four scalar ones
+                // and schedule the scaling as vec4 FMAs later.
+                const vec2 ds0v = vec2(data_b[b_offset + b_outer].ds[0]);
+                const vec2 ds1v = vec2(data_b[b_offset + b_outer].ds[1]);
+                const vec2 ds2v = vec2(data_b[b_offset + b_outer].ds[2]);
+                const vec2 ds3v = vec2(data_b[b_offset + b_outer].ds[3]);
 
-                    // -------- A: load 4 bytes via two aligned uint16 loads, once --------
-                    const uint a_h_idx = (j + k) >> 1u;       // uint16 index into packed qs
-                    const uint a_lo = uint(data_a_packed16[ib0 + i].qs[a_h_idx    ]);
-                    const uint a_hi = uint(data_a_packed16[ib0 + i].qs[a_h_idx + 1]);
-                    const uint v    = a_lo | (a_hi << 16);
+                const vec4 ds_x = vec4(ds0v.x, ds1v.x, ds2v.x, ds3v.x);
+                const vec4 ds_y = vec4(ds0v.y, ds1v.y, ds2v.y, ds3v.y);
 
-                    // Four packed ternary-lane vectors, one per shift level.
+                const int32_t b0 = data_b[b_offset + b_outer].qs[0u * 8u + vec_idx];
+                const int32_t b1 = data_b[b_offset + b_outer].qs[1u * 8u + vec_idx];
+                const int32_t b2 = data_b[b_offset + b_outer].qs[2u * 8u + vec_idx];
+                const int32_t b3 = data_b[b_offset + b_outer].qs[3u * 8u + vec_idx];
+
+                // ---------------- Per-row A + compute ----------------
+                // [[unroll]] over the compile-time NUM_ROWS bound with a runtime
+                // `n < num_rows` guard lets the compiler register-allocate
+                // `temp[jcol][n]` (constant index per unrolled iteration) while
+                // still handling the boundary case where the last workgroup has
+                // fewer rows than NUM_ROWS.
+                [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
+                    if (n >= num_rows) { continue; }
+
+                    const uint  ib0    = ib0_row[n];
+                    const float d      =  float(data_a[ib0 + i].d);
+                    // Fuse   d * (q*ds.x)   and   -d*(1/8) * ds.y    into vec4 FMAs.
+                    const vec4  d_x    = ds_x * d;
+                    const vec4  d_neg8_y = ds_y * (-d * 0.125f);
+
+                    // Load 4 A-bytes via two aligned uint16 reads; derive all
+                    // four shift levels (= 4 ternary-packed lane vectors) from
+                    // one uint.
+                    const uint a_h_idx = (j + k) >> 1u;
+                    const uint a_lo    = uint(data_a_packed16[ib0 + i].qs[a_h_idx    ]);
+                    const uint a_hi    = uint(data_a_packed16[ib0 + i].qs[a_h_idx + 1]);
+                    const uint v       = a_lo | (a_hi << 16);
+
                     const int32_t a0 = int32_t( v         & 0x03030303u);
                     const int32_t a1 = int32_t((v >> 2u)  & 0x03030303u);
                     const int32_t a2 = int32_t((v >> 4u)  & 0x03030303u);
                     const int32_t a3 = int32_t((v >> 6u)  & 0x03030303u);
 
-                    // -------- B: one block_q8_1_x4 covers all four shift levels --------
-                    // b_first is the first inner-block index (a multiple of 4 because j*4
-                    // is a multiple of QUANT_K_Q8_1 * 4), so b_outer = b_first / 4.
-                    // Addressing mirrors mul_mat_vec_tq1_0_q.comp so that semantics match
-                    // the original shader for every call site (batched / MUL_MAT_ID).
-                    const uint b_first = b_offset + (b_base + i * QUANT_K + j * 4u) / QUANT_K_Q8_1;
-                    const uint b_outer = b_first / 4u;
-
-                    const vec2 ds0 = vec2(data_b[b_offset + b_outer].ds[0]);
-                    const vec2 ds1 = vec2(data_b[b_offset + b_outer].ds[1]);
-                    const vec2 ds2 = vec2(data_b[b_offset + b_outer].ds[2]);
-                    const vec2 ds3 = vec2(data_b[b_offset + b_outer].ds[3]);
-
-                    const int32_t b0 = data_b[b_offset + b_outer].qs[0u * 8u + vec_idx];
-                    const int32_t b1 = data_b[b_offset + b_outer].qs[1u * 8u + vec_idx];
-                    const int32_t b2 = data_b[b_offset + b_outer].qs[2u * 8u + vec_idx];
-                    const int32_t b3 = data_b[b_offset + b_outer].qs[3u * 8u + vec_idx];
-
-                    // Fused multiply-adds: d*(q*ds.x) + d_neg8*ds.y
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a0, b0)) * d * ds0.x + d_neg8 * ds0.y);
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a1, b1)) * d * ds1.x + d_neg8 * ds1.y);
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a2, b2)) * d * ds2.x + d_neg8 * ds2.y);
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a3, b3)) * d * ds3.x + d_neg8 * ds3.y);
+                    // 4 FMAs, indexed into pre-scaled vec4s.
+                    FLOAT_TYPE acc = temp[jcol][n];
+                    acc += ACC_TYPE(float(dotPacked4x8EXT(a0, b0)) * d_x.x + d_neg8_y.x);
+                    acc += ACC_TYPE(float(dotPacked4x8EXT(a1, b1)) * d_x.y + d_neg8_y.y);
+                    acc += ACC_TYPE(float(dotPacked4x8EXT(a2, b2)) * d_x.z + d_neg8_y.z);
+                    acc += ACC_TYPE(float(dotPacked4x8EXT(a3, b3)) * d_x.w + d_neg8_y.w);
+                    temp[jcol][n] = acc;
                 }
             }
-            temp[jcol][n] = acc;
         }
     }
 
