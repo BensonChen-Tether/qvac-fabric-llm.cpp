@@ -24,9 +24,6 @@
 constexpr int QUANT_K_TQ2_0 = 256;  // Block size: 256 elements per block
 constexpr int QUANT_R_TQ2_0 = 4;    // 4 elements per byte (2 bits each)
 
-// Q8_1 format constants
-constexpr int QUANT_K_Q8_1 = 32;    // Block size: 32 elements per block
-
 // TQ2_0 block structure - matches the shader's block_tq2_0
 // TQ2_0 stores 2-bit ternary values: {0, 1, 2} representing {-1, 0, 1} relative to some offset
 struct block_tq2_0 {
@@ -34,55 +31,7 @@ struct block_tq2_0 {
     uint16_t d;  // FP16 scale factor (stored as raw bits)
 };
 
-// Q8_1 block structure - matches the shader's block_q8_1
-struct block_q8_1 {
-    uint16_t ds[2];   // FP16: ds[0] = scale (d), ds[1] = sum (s)
-    int8_t qs[QUANT_K_Q8_1];  // 32 int8 quantized values
-};
-
-// Q8_1 x4 block structure - matches the shader's block_q8_1_x4
-// This packs 4 Q8_1 blocks together for efficient memory access
-struct block_q8_1_x4 {
-    uint16_t ds[4][2];  // 4 sets of (d, s) pairs
-    int32_t qs[32];     // 32 packed int32 values (4 int8 per int32)
-};
-
-// FP16 conversion utilities
-static float fp16_to_fp32(uint16_t h) {
-    uint32_t sign = (h & 0x8000) << 16;
-    uint32_t exp = (h >> 10) & 0x1F;
-    uint32_t mant = h & 0x3FF;
-
-    if (exp == 0) {
-        if (mant == 0) {
-            uint32_t result = sign;
-            float f;
-            memcpy(&f, &result, sizeof(f));
-            return f;
-        }
-        // Denormalized
-        while (!(mant & 0x400)) {
-            mant <<= 1;
-            exp--;
-        }
-        exp++;
-        mant &= ~0x400;
-    } else if (exp == 31) {
-        uint32_t result = sign | 0x7F800000 | (mant << 13);
-        float f;
-        memcpy(&f, &result, sizeof(f));
-        return f;
-    }
-
-    exp = exp + (127 - 15);
-    mant = mant << 13;
-
-    uint32_t result = sign | (exp << 23) | mant;
-    float f;
-    memcpy(&f, &result, sizeof(f));
-    return f;
-}
-
+// FP16 conversion utility
 static uint16_t fp32_to_fp16(float f) {
     uint32_t x;
     memcpy(&x, &f, sizeof(x));
@@ -133,30 +82,6 @@ static void tq2_0_get_byte_and_shift(int element_idx, int* byte_idx, int* bit_sh
     *bit_shift = s;
 }
 
-// Dequantize TQ2_0 block to float values
-// TQ2_0 stores 2-bit ternary values where each value v in {0, 1, 2} represents (v - 1) = {-1, 0, 1}
-static void dequantize_tq2_0(const block_tq2_0* block, float* output) {
-    const float d = fp16_to_fp32(block->d);
-
-    for (int i = 0; i < QUANT_K_TQ2_0; i++) {
-        int byte_idx, bit_shift;
-        tq2_0_get_byte_and_shift(i, &byte_idx, &bit_shift);
-        int val = (block->qs[byte_idx] >> bit_shift) & 0x3;
-
-        // Convert from {0, 1, 2} to {-1, 0, 1}
-        output[i] = d * (float)(val - 1);
-    }
-}
-
-// Dequantize Q8_1 block to float values
-static void dequantize_q8_1(const block_q8_1* block, float* output) {
-    const float d = fp16_to_fp32(block->ds[0]);
-
-    for (int i = 0; i < QUANT_K_Q8_1; i++) {
-        output[i] = d * (float)block->qs[i];
-    }
-}
-
 // Quantize float values to TQ2_0 format (using interleaved layout)
 static void quantize_to_tq2_0(const float* input, block_tq2_0* block) {
     // Find the maximum absolute value for scaling
@@ -194,74 +119,18 @@ static void quantize_to_tq2_0(const float* input, block_tq2_0* block) {
     }
 }
 
-// Quantize float values to Q8_1 format
-static void quantize_to_q8_1(const float* input, block_q8_1* block) {
-    // Find the maximum absolute value for scaling
-    float max_abs = 0.0f;
-    float sum = 0.0f;
-    for (int i = 0; i < QUANT_K_Q8_1; i++) {
-        float abs_val = fabsf(input[i]);
-        if (abs_val > max_abs) {
-            max_abs = abs_val;
-        }
-        sum += input[i];
-    }
-
-    // Compute scale factor (d) such that values fit in int8 range [-127, 127]
-    float d = max_abs / 127.0f;
-    if (d == 0.0f) d = 1.0f;
-
-    block->ds[0] = fp32_to_fp16(d);
-    block->ds[1] = fp32_to_fp16(sum);  // Store sum for the offset correction
-
-    // Quantize each value
-    for (int i = 0; i < QUANT_K_Q8_1; i++) {
-        int q = (int)roundf(input[i] / d);
-        q = std::max(-127, std::min(127, q));
-        block->qs[i] = (int8_t)q;
-    }
-}
-
-// CPU reference implementation using dequantized values
-// This computes the mathematically correct result that the shader should approximate
-static void mul_mat_vec_dequantized_cpu(
-    const block_tq2_0* A,
-    const block_q8_1* B,
-    float* output,
-    int M,  // Number of rows
-    int K   // Number of columns (must be multiple of QUANT_K_TQ2_0)
-) {
-    const int num_blocks_per_row = K / QUANT_K_TQ2_0;
-    const int q8_blocks_per_tq2_block = QUANT_K_TQ2_0 / QUANT_K_Q8_1;  // 256/32 = 8
-
-    // Temporary buffers for dequantized values
-    std::vector<float> a_dequant(QUANT_K_TQ2_0);
-    std::vector<float> b_dequant(QUANT_K_TQ2_0);
-
-    for (int row = 0; row < M; row++) {
-        float acc = 0.0f;
-
-        for (int block_idx = 0; block_idx < num_blocks_per_row; block_idx++) {
-            const block_tq2_0* a_block = &A[row * num_blocks_per_row + block_idx];
-
-            // Dequantize A block
-            dequantize_tq2_0(a_block, a_dequant.data());
-
-            // Dequantize corresponding B blocks
-            for (int q8_idx = 0; q8_idx < q8_blocks_per_tq2_block; q8_idx++) {
-                const block_q8_1* b_block = &B[block_idx * q8_blocks_per_tq2_block + q8_idx];
-                dequantize_q8_1(b_block, &b_dequant[q8_idx * QUANT_K_Q8_1]);
-            }
-
-            // Compute dot product with dequantized values
-            for (int k = 0; k < QUANT_K_TQ2_0; k++) {
-                acc += a_dequant[k] * b_dequant[k];
-            }
-        }
-
-        output[row] = acc;
-    }
-}
+// Forward declaration - defined after backend infrastructure below.
+// Runs MUL_MAT on the given backend: A [K,M] quantized to TQ2_0, B [K,1] F32.
+// When called with the CPU backend, this dispatches to ggml's internal
+// TQ2_0 CPU kernel (ggml_vec_dot_tq2_0_q8_*), so we don't have to
+// reimplement the matrix-vector product ourselves.
+static bool run_mul_mat_on_backend(
+    ggml_backend_t backend,
+    const std::vector<float>& A_f32,
+    const std::vector<float>& B_f32,
+    std::vector<float>& output,
+    int M, int K
+);
 
 // Helper to print test results
 static const char* result_str(bool passed) {
@@ -354,19 +223,22 @@ static void cleanup_backends() {
     }
 }
 
-// Run MUL_MAT operation on a specific backend
-// A: [K, M] in row-major = [M rows, K cols] matrix stored in TQ2_0 format
+// Run MUL_MAT operation on a specific backend.
+// A: [K, M] in row-major = [M rows, K cols] matrix, ALWAYS stored as TQ2_0.
 // B: [K, 1] vector in F32 format
 // Result: [M] output vector
+//
+// K must be a multiple of QUANT_K_TQ2_0 (256).
 static bool run_mul_mat_on_backend(
     ggml_backend_t backend,
-    const std::vector<float>& A_f32,  // M x K matrix in row-major
+    const std::vector<float>& A_f32,  // M x K matrix in row-major (will be quantized to TQ2_0)
     const std::vector<float>& B_f32,  // K vector
     std::vector<float>& output,       // M output
-    int M, int K,
-    bool use_tq2_0
+    int M, int K
 ) {
     const char* backend_name = ggml_backend_name(backend);
+
+    assert(K % QUANT_K_TQ2_0 == 0 && "K must be a multiple of the TQ2_0 block size (256)");
 
     // In GGML, matrix A for MUL_MAT is [ne0=K, ne1=M] (transposed storage)
     // and B is [ne0=K, ne1=1]
@@ -387,9 +259,8 @@ static bool run_mul_mat_on_backend(
     }
 
     // Create tensors
-    // A: [K, M] - K elements per row, M rows (stored in column-major for GGML)
-    ggml_type a_type = use_tq2_0 ? GGML_TYPE_TQ2_0 : GGML_TYPE_F32;
-    ggml_tensor* tensor_a = ggml_new_tensor_2d(ctx, a_type, K, M);
+    // A: [K, M] - K elements per row, M rows (stored in column-major for GGML), TQ2_0 only.
+    ggml_tensor* tensor_a = ggml_new_tensor_2d(ctx, GGML_TYPE_TQ2_0, K, M);
     ggml_set_name(tensor_a, "A");
 
     // B: [K, 1] - vector
@@ -419,32 +290,19 @@ static bool run_mul_mat_on_backend(
         return false;
     }
 
-    // Set tensor data
-    if (use_tq2_0) {
-        // Quantize A to TQ2_0
-        const int blocks_per_row = K / QUANT_K_TQ2_0;
-        const int total_blocks = M * blocks_per_row;
-        std::vector<block_tq2_0> A_tq2(total_blocks);
+    // Quantize A to TQ2_0 and upload.
+    const int blocks_per_row = K / QUANT_K_TQ2_0;
+    const int total_blocks   = M * blocks_per_row;
+    std::vector<block_tq2_0> A_tq2(total_blocks);
 
-        for (int row = 0; row < M; row++) {
-            for (int b = 0; b < blocks_per_row; b++) {
-                quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
-                                 &A_tq2[row * blocks_per_row + b]);
-            }
+    for (int row = 0; row < M; row++) {
+        for (int b = 0; b < blocks_per_row; b++) {
+            quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
+                              &A_tq2[row * blocks_per_row + b]);
         }
-
-        ggml_backend_tensor_set(tensor_a, A_tq2.data(), 0, total_blocks * sizeof(block_tq2_0));
-    } else {
-        // Use F32 directly
-        // GGML MUL_MAT(A, B): result[m, n] = sum_k A[k, m] * B[k, n]
-        // We want: output[row] = sum_col A_f32[row, col] * B_f32[col]
-        // So we need A[k, m] = A_f32[m, k], meaning A is stored with each row of A_f32
-        // becoming a column in GGML's A tensor.
-        // For GGML tensor [K, M], element (k, m) is at memory offset k + m*K
-        // We want A[col, row] = A_f32[row * K + col], stored at col + row*K = row*K + col
-        // This means the memory layout is actually the same!
-        ggml_backend_tensor_set(tensor_a, A_f32.data(), 0, M * K * sizeof(float));
     }
+
+    ggml_backend_tensor_set(tensor_a, A_tq2.data(), 0, total_blocks * sizeof(block_tq2_0));
 
     // Set B vector
     ggml_backend_tensor_set(tensor_b, B_f32.data(), 0, K * sizeof(float));
@@ -467,158 +325,6 @@ static bool run_mul_mat_on_backend(
     ggml_free(ctx);
 
     return true;
-}
-
-// ============================================================================
-// CPU-only Tests (existing tests, simplified)
-// ============================================================================
-
-// Test 1: Basic small matrix-vector multiplication with random data
-static bool test_basic_small() {
-    printf("Test 1: Basic small matrix-vector multiplication (random data)...\n");
-    printf("  Note: High error expected for ternary quantization of random data\n");
-
-    const int M = 4;   // 4 rows
-    const int K = 256; // 256 columns (1 TQ2_0 block per row)
-
-    std::mt19937 rng(42);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-
-    std::vector<float> A_f32(M * K);
-    std::vector<float> B_f32(K);
-    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
-    for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
-
-    // Quantize
-    const int num_a_blocks = M;
-    std::vector<block_tq2_0> A_tq2(num_a_blocks);
-    for (int row = 0; row < M; row++) {
-        quantize_to_tq2_0(&A_f32[row * K], &A_tq2[row]);
-    }
-
-    const int num_b_blocks = K / QUANT_K_Q8_1;
-    std::vector<block_q8_1> B_q8(num_b_blocks);
-    for (int i = 0; i < num_b_blocks; i++) {
-        quantize_to_q8_1(&B_f32[i * QUANT_K_Q8_1], &B_q8[i]);
-    }
-
-    std::vector<float> output_dequant(M);
-    mul_mat_vec_dequantized_cpu(A_tq2.data(), B_q8.data(), output_dequant.data(), M, K);
-
-    bool all_finite = true;
-    for (int i = 0; i < M; i++) {
-        if (!std::isfinite(output_dequant[i])) {
-            all_finite = false;
-            printf("  Row %d: NaN or Inf detected!\n", i);
-        }
-    }
-
-    bool passed = all_finite;
-    printf("  All outputs finite: %s\n\n", result_str(passed));
-    return passed;
-}
-
-// Test 2: Larger matrix with multiple blocks per row
-static bool test_larger_matrix() {
-    printf("Test 2: Larger matrix with multiple TQ2_0 blocks per row...\n");
-    printf("  Note: Testing multi-block accumulation correctness\n");
-
-    const int M = 8;
-    const int K = 512;
-
-    std::mt19937 rng(123);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-
-    std::vector<float> A_f32(M * K);
-    std::vector<float> B_f32(K);
-    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
-    for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
-
-    const int blocks_per_row = K / QUANT_K_TQ2_0;
-    const int num_a_blocks = M * blocks_per_row;
-    std::vector<block_tq2_0> A_tq2(num_a_blocks);
-    for (int row = 0; row < M; row++) {
-        for (int b = 0; b < blocks_per_row; b++) {
-            quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
-                             &A_tq2[row * blocks_per_row + b]);
-        }
-    }
-
-    const int num_b_blocks = K / QUANT_K_Q8_1;
-    std::vector<block_q8_1> B_q8(num_b_blocks);
-    for (int i = 0; i < num_b_blocks; i++) {
-        quantize_to_q8_1(&B_f32[i * QUANT_K_Q8_1], &B_q8[i]);
-    }
-
-    std::vector<float> output_dequant(M);
-    mul_mat_vec_dequantized_cpu(A_tq2.data(), B_q8.data(), output_dequant.data(), M, K);
-
-    bool all_finite = true;
-    for (int i = 0; i < M; i++) {
-        if (!std::isfinite(output_dequant[i])) {
-            all_finite = false;
-            printf("  Row %d: NaN or Inf detected!\n", i);
-        }
-    }
-
-    bool passed = all_finite;
-    printf("  All outputs finite: %s\n\n", result_str(passed));
-    return passed;
-}
-
-// Test 3: Quantization round-trip accuracy
-static bool test_quantization_roundtrip() {
-    printf("Test 3: Quantization round-trip accuracy...\n");
-
-    const int K = 256;
-    std::mt19937 rng(111);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-
-    std::vector<float> original(K);
-    for (int i = 0; i < K; i++) {
-        original[i] = dist(rng);
-    }
-
-    // TQ2_0 round-trip
-    block_tq2_0 tq2_block;
-    quantize_to_tq2_0(original.data(), &tq2_block);
-
-    std::vector<float> recovered(K);
-    dequantize_tq2_0(&tq2_block, recovered.data());
-
-    float tq2_rmse = 0.0f;
-    for (int i = 0; i < K; i++) {
-        float diff = original[i] - recovered[i];
-        tq2_rmse += diff * diff;
-    }
-    tq2_rmse = sqrtf(tq2_rmse / K);
-
-    printf("  TQ2_0 round-trip RMSE: %.6f\n", tq2_rmse);
-
-    // Q8_1 round-trip
-    std::vector<float> original_q8(QUANT_K_Q8_1);
-    for (int i = 0; i < QUANT_K_Q8_1; i++) {
-        original_q8[i] = dist(rng);
-    }
-
-    block_q8_1 q8_block;
-    quantize_to_q8_1(original_q8.data(), &q8_block);
-
-    std::vector<float> recovered_q8(QUANT_K_Q8_1);
-    dequantize_q8_1(&q8_block, recovered_q8.data());
-
-    float q8_rmse = 0.0f;
-    for (int i = 0; i < QUANT_K_Q8_1; i++) {
-        float diff = original_q8[i] - recovered_q8[i];
-        q8_rmse += diff * diff;
-    }
-    q8_rmse = sqrtf(q8_rmse / QUANT_K_Q8_1);
-
-    printf("  Q8_1 round-trip RMSE: %.6f\n", q8_rmse);
-
-    bool passed = tq2_rmse < 0.5f && q8_rmse < 0.02f;
-    printf("  %s\n\n", result_str(passed));
-    return passed;
 }
 
 // ============================================================================
@@ -645,28 +351,17 @@ static bool test_gpu_basic() {
     for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
     for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
 
-    // Compute on CPU with TQ2_0 (as reference)
-    const int blocks_per_row = K / QUANT_K_TQ2_0;
-    std::vector<block_tq2_0> A_tq2(M * blocks_per_row);
-    for (int row = 0; row < M; row++) {
-        for (int b = 0; b < blocks_per_row; b++) {
-            quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
-                             &A_tq2[row * blocks_per_row + b]);
-        }
+    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
+    std::vector<float> output_cpu;
+    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
+        printf("  CPU computation failed\n");
+        printf("  FAILED\n\n");
+        return false;
     }
-
-    const int num_b_blocks = K / QUANT_K_Q8_1;
-    std::vector<block_q8_1> B_q8(num_b_blocks);
-    for (int i = 0; i < num_b_blocks; i++) {
-        quantize_to_q8_1(&B_f32[i * QUANT_K_Q8_1], &B_q8[i]);
-    }
-
-    std::vector<float> output_cpu(M);
-    mul_mat_vec_dequantized_cpu(A_tq2.data(), B_q8.data(), output_cpu.data(), M, K);
 
     // Compute on GPU with TQ2_0
     std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K, true)) {
+    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
         printf("  GPU computation failed\n");
         printf("  FAILED\n\n");
         return false;
@@ -716,28 +411,17 @@ static bool test_gpu_larger_matrix() {
     for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
     for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
 
-    // Compute on CPU
-    const int blocks_per_row = K / QUANT_K_TQ2_0;
-    std::vector<block_tq2_0> A_tq2(M * blocks_per_row);
-    for (int row = 0; row < M; row++) {
-        for (int b = 0; b < blocks_per_row; b++) {
-            quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
-                             &A_tq2[row * blocks_per_row + b]);
-        }
+    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
+    std::vector<float> output_cpu;
+    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
+        printf("  CPU computation failed\n");
+        printf("  FAILED\n\n");
+        return false;
     }
-
-    const int num_b_blocks = K / QUANT_K_Q8_1;
-    std::vector<block_q8_1> B_q8(num_b_blocks);
-    for (int i = 0; i < num_b_blocks; i++) {
-        quantize_to_q8_1(&B_f32[i * QUANT_K_Q8_1], &B_q8[i]);
-    }
-
-    std::vector<float> output_cpu(M);
-    mul_mat_vec_dequantized_cpu(A_tq2.data(), B_q8.data(), output_cpu.data(), M, K);
 
     // Compute on GPU
     std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K, true)) {
+    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
         printf("  GPU computation failed\n");
         printf("  FAILED\n\n");
         return false;
@@ -791,28 +475,17 @@ static bool test_gpu_ternary_friendly() {
         B_f32[i] = (v == 0.0f) ? 0.1f : v;
     }
 
-    // Compute on CPU
-    const int blocks_per_row = K / QUANT_K_TQ2_0;
-    std::vector<block_tq2_0> A_tq2(M * blocks_per_row);
-    for (int row = 0; row < M; row++) {
-        for (int b = 0; b < blocks_per_row; b++) {
-            quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
-                             &A_tq2[row * blocks_per_row + b]);
-        }
+    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
+    std::vector<float> output_cpu;
+    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
+        printf("  CPU computation failed\n");
+        printf("  FAILED\n\n");
+        return false;
     }
-
-    const int num_b_blocks = K / QUANT_K_Q8_1;
-    std::vector<block_q8_1> B_q8(num_b_blocks);
-    for (int i = 0; i < num_b_blocks; i++) {
-        quantize_to_q8_1(&B_f32[i * QUANT_K_Q8_1], &B_q8[i]);
-    }
-
-    std::vector<float> output_cpu(M);
-    mul_mat_vec_dequantized_cpu(A_tq2.data(), B_q8.data(), output_cpu.data(), M, K);
 
     // Compute on GPU
     std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K, true)) {
+    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
         printf("  GPU computation failed\n");
         printf("  FAILED\n\n");
         return false;
@@ -863,28 +536,17 @@ static bool test_gpu_stress() {
     for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
     for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
 
-    // Compute on CPU
-    const int blocks_per_row = K / QUANT_K_TQ2_0;
-    std::vector<block_tq2_0> A_tq2(M * blocks_per_row);
-    for (int row = 0; row < M; row++) {
-        for (int b = 0; b < blocks_per_row; b++) {
-            quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
-                             &A_tq2[row * blocks_per_row + b]);
-        }
+    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
+    std::vector<float> output_cpu;
+    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
+        printf("  CPU computation failed\n");
+        printf("  FAILED\n\n");
+        return false;
     }
-
-    const int num_b_blocks = K / QUANT_K_Q8_1;
-    std::vector<block_q8_1> B_q8(num_b_blocks);
-    for (int i = 0; i < num_b_blocks; i++) {
-        quantize_to_q8_1(&B_f32[i * QUANT_K_Q8_1], &B_q8[i]);
-    }
-
-    std::vector<float> output_cpu(M);
-    mul_mat_vec_dequantized_cpu(A_tq2.data(), B_q8.data(), output_cpu.data(), M, K);
 
     // Compute on GPU
     std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K, true)) {
+    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
         printf("  GPU computation failed\n");
         printf("  FAILED\n\n");
         return false;
@@ -903,7 +565,7 @@ static bool test_gpu_stress() {
     }
     float avg_error = sum_error / M;
 
-    printf("  Matrix size: %d x %d (%d TQ2_0 blocks per row)\n", M, K, blocks_per_row);
+    printf("  Matrix size: %d x %d (%d TQ2_0 blocks per row)\n", M, K, K / QUANT_K_TQ2_0);
     printf("  Max relative error: %.4f%%\n", max_error * 100.0f);
     printf("  Avg relative error: %.4f%%\n", avg_error * 100.0f);
     printf("  Rows with >10%% error: %d/%d\n", num_large_errors, M);
@@ -912,64 +574,6 @@ static bool test_gpu_stress() {
     // High relative errors are expected for individual rows, but avg should be bounded
     // The key test is that GPU and CPU produce similar results
     bool passed = avg_error < 0.20f;  // Average error below 20%
-    printf("  %s\n\n", result_str(passed));
-    return passed;
-}
-
-// GPU Test 5: F32 baseline (no TQ2_0 quantization) to verify GPU correctness
-static bool test_gpu_f32_baseline() {
-    printf("GPU Test 5: F32 baseline (no TQ2_0 quantization)...\n");
-
-    if (!g_gpu_available) {
-        printf("  SKIPPED: No GPU backend available\n\n");
-        return true;
-    }
-
-    const int M = 4;
-    const int K = 256;
-
-    std::mt19937 rng(42);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-
-    std::vector<float> A_f32(M * K);
-    std::vector<float> B_f32(K);
-    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
-    for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
-
-    // Compute on CPU (simple F32 matmul)
-    std::vector<float> output_cpu(M);
-    for (int row = 0; row < M; row++) {
-        float sum = 0.0f;
-        for (int col = 0; col < K; col++) {
-            sum += A_f32[row * K + col] * B_f32[col];
-        }
-        output_cpu[row] = sum;
-    }
-
-    // Compute on GPU with F32
-    std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K, false)) {
-        printf("  GPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compare results - should be nearly identical for F32
-    float max_error = 0.0f;
-    for (int i = 0; i < M; i++) {
-        float error = fabsf(output_gpu[i] - output_cpu[i]);
-        float rel_error = error / (fabsf(output_cpu[i]) + 1e-6f);
-        max_error = std::max(max_error, rel_error);
-    }
-
-    printf("  CPU results: [%.4f, %.4f, %.4f, %.4f]\n",
-           output_cpu[0], output_cpu[1], output_cpu[2], output_cpu[3]);
-    printf("  GPU results: [%.4f, %.4f, %.4f, %.4f]\n",
-           output_gpu[0], output_gpu[1], output_gpu[2], output_gpu[3]);
-    printf("  Max relative error: %.6f%%\n", max_error * 100.0f);
-
-    // F32 should have very low error
-    bool passed = max_error < 0.001f;  // 0.1% max error for F32
     printf("  %s\n\n", result_str(passed));
     return passed;
 }
@@ -997,15 +601,8 @@ int main(int argc, char** argv) {
     int num_tests = 0;
     int num_passed = 0;
 
-    // CPU-only tests
-    printf("--- CPU Reference Tests ---\n\n");
-    num_tests++; if (test_basic_small()) num_passed++;
-    num_tests++; if (test_larger_matrix()) num_passed++;
-    num_tests++; if (test_quantization_roundtrip()) num_passed++;
-
-    // GPU tests
-    printf("--- GPU vs CPU Comparison Tests ---\n\n");
-    num_tests++; if (test_gpu_f32_baseline()) num_passed++;
+    // GPU tests (TQ2_0 only)
+    printf("--- GPU vs CPU Comparison Tests (TQ2_0) ---\n\n");
     num_tests++; if (test_gpu_basic()) num_passed++;
     num_tests++; if (test_gpu_larger_matrix()) num_passed++;
     num_tests++; if (test_gpu_ternary_friendly()) num_passed++;
