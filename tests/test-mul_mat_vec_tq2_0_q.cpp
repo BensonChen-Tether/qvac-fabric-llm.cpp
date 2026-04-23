@@ -1,8 +1,12 @@
 // Unit tests for the mul_mat_vec_tq2_0_q Vulkan shader
 // Tests matrix-vector multiplication where:
 // - Matrix A is in TQ2_0 format (2-bit ternary quantization)
-// - Vector B is in Q8_1 format (8-bit quantization) or F32
-// Tests both CPU reference implementation and GPU (Vulkan) backend
+// - Vector B is in F32 (quantized internally by the GPU shader to Q8_1)
+//
+// The reference (CPU) implementation is a hand-written, inlined matrix-vector
+// product that operates directly on the TQ2_0-packed matrix. It avoids the
+// ggml CPU backend entirely: no graph setup, no tensor allocation, no
+// dispatch overhead. This keeps the tests fast even for large matrices.
 
 #include <ggml.h>
 #include <ggml-alloc.h>
@@ -157,6 +161,35 @@ static uint16_t fp32_to_fp16(float f) {
     return (uint16_t)(sign | (exp << 10) | (mant >> 13));
 }
 
+static float fp16_to_fp32(uint16_t h) {
+    const uint32_t sign = (uint32_t(h & 0x8000u) << 16);
+    uint32_t exp = (h >> 10) & 0x1Fu;
+    uint32_t mant = h & 0x03FFu;
+    uint32_t bits;
+
+    if (exp == 0) {
+        if (mant == 0) {
+            bits = sign;
+        } else {
+            exp = 127 - 15 + 1;
+            while ((mant & 0x0400u) == 0) {
+                mant <<= 1;
+                --exp;
+            }
+            mant &= 0x03FFu;
+            bits = sign | (exp << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        bits = sign | 0x7F800000u | (mant << 13);
+    } else {
+        bits = sign | ((exp + (127 - 15)) << 23) | (mant << 13);
+    }
+
+    float out;
+    memcpy(&out, &bits, sizeof(out));
+    return out;
+}
+
 // TQ2_0 memory layout helper functions
 // The TQ2_0 format uses an interleaved layout for efficient GPU access:
 // - Elements 0-31:   bytes 0-31,  bits 0-1
@@ -215,14 +248,82 @@ static void quantize_to_tq2_0(const float* input, block_tq2_0* block) {
     }
 }
 
+static void quantize_matrix_to_tq2_0(
+    const std::vector<float>& A_f32,
+    std::vector<block_tq2_0>& A_tq2,
+    int M,
+    int K
+) {
+    assert(K % QUANT_K_TQ2_0 == 0 && "K must be a multiple of the TQ2_0 block size (256)");
+
+    const int blocks_per_row = K / QUANT_K_TQ2_0;
+    A_tq2.resize(M * blocks_per_row);
+
+    for (int row = 0; row < M; ++row) {
+        for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+            quantize_to_tq2_0(
+                &A_f32[row * K + block_idx * QUANT_K_TQ2_0],
+                &A_tq2[row * blocks_per_row + block_idx]
+            );
+        }
+    }
+}
+
+static void cpu_ref_mul_mat_tq2_0(
+    const std::vector<block_tq2_0>& A_tq2,
+    const std::vector<float>& B_f32,
+    std::vector<float>& output,
+    int M,
+    int K
+) {
+    assert(K % QUANT_K_TQ2_0 == 0 && "K must be a multiple of the TQ2_0 block size (256)");
+
+    const int blocks_per_row = K / QUANT_K_TQ2_0;
+    output.assign(M, 0.0f);
+
+    for (int row = 0; row < M; ++row) {
+        const block_tq2_0* row_blocks = &A_tq2[row * blocks_per_row];
+        float acc = 0.0f;
+
+        for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
+            const block_tq2_0& block = row_blocks[block_idx];
+            const float d = fp16_to_fp32(block.d);
+            const float* b = B_f32.data() + block_idx * QUANT_K_TQ2_0;
+            const uint8_t* qs = block.qs;
+
+            float block_acc0 = 0.0f;
+            float block_acc1 = 0.0f;
+
+            for (int byte_idx = 0; byte_idx < 64; byte_idx += 2) {
+                const uint8_t packed0 = qs[byte_idx + 0];
+                const uint8_t packed1 = qs[byte_idx + 1];
+
+                const int base0 = (byte_idx & 31) + ((byte_idx >> 5) << 7);
+                const int base1 = ((byte_idx + 1) & 31) + (((byte_idx + 1) >> 5) << 7);
+
+                block_acc0 += float(int((packed0 >> 0) & 0x3u) - 1) * b[base0 + 0];
+                block_acc0 += float(int((packed0 >> 2) & 0x3u) - 1) * b[base0 + 32];
+                block_acc0 += float(int((packed0 >> 4) & 0x3u) - 1) * b[base0 + 64];
+                block_acc0 += float(int((packed0 >> 6) & 0x3u) - 1) * b[base0 + 96];
+
+                block_acc1 += float(int((packed1 >> 0) & 0x3u) - 1) * b[base1 + 0];
+                block_acc1 += float(int((packed1 >> 2) & 0x3u) - 1) * b[base1 + 32];
+                block_acc1 += float(int((packed1 >> 4) & 0x3u) - 1) * b[base1 + 64];
+                block_acc1 += float(int((packed1 >> 6) & 0x3u) - 1) * b[base1 + 96];
+            }
+
+            acc += d * (block_acc0 + block_acc1);
+        }
+
+        output[row] = acc;
+    }
+}
+
 // Forward declaration - defined after backend infrastructure below.
-// Runs MUL_MAT on the given backend: A [K,M] quantized to TQ2_0, B [K,1] F32.
-// When called with the CPU backend, this dispatches to ggml's internal
-// TQ2_0 CPU kernel (ggml_vec_dot_tq2_0_q8_*), so we don't have to
-// reimplement the matrix-vector product ourselves.
+// Runs MUL_MAT on the given backend using an already-packed TQ2_0 matrix.
 static bool run_mul_mat_on_backend(
     ggml_backend_t backend,
-    const std::vector<float>& A_f32,
+    const std::vector<block_tq2_0>& A_tq2,
     const std::vector<float>& B_f32,
     std::vector<float>& output,
     int M, int K
@@ -238,7 +339,6 @@ static const char* result_str(bool passed) {
 // ============================================================================
 
 static ggml_backend_t g_backend_gpu = nullptr;
-static ggml_backend_t g_backend_cpu = nullptr;
 static bool g_gpu_available = false;
 
 // Initialize backends
@@ -247,21 +347,6 @@ static bool init_backends() {
 
     // Load all backends
     ggml_backend_load_all();
-
-    // Find and initialize CPU backend
-    for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
-        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
-        if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
-            g_backend_cpu = ggml_backend_dev_init(dev, nullptr);
-            printf("  CPU backend: %s\n", ggml_backend_name(g_backend_cpu));
-            break;
-        }
-    }
-
-    if (!g_backend_cpu) {
-        printf("  ERROR: No CPU backend found!\n");
-        return false;
-    }
 
     // Find and initialize GPU (Vulkan) backend
     for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
@@ -313,10 +398,6 @@ static void cleanup_backends() {
         ggml_backend_free(g_backend_gpu);
         g_backend_gpu = nullptr;
     }
-    if (g_backend_cpu) {
-        ggml_backend_free(g_backend_cpu);
-        g_backend_cpu = nullptr;
-    }
 }
 
 // Run MUL_MAT operation on a specific backend.
@@ -327,7 +408,7 @@ static void cleanup_backends() {
 // K must be a multiple of QUANT_K_TQ2_0 (256).
 static bool run_mul_mat_on_backend(
     ggml_backend_t backend,
-    const std::vector<float>& A_f32,  // M x K matrix in row-major (will be quantized to TQ2_0)
+    const std::vector<block_tq2_0>& A_tq2,
     const std::vector<float>& B_f32,  // K vector
     std::vector<float>& output,       // M output
     int M, int K
@@ -386,17 +467,9 @@ static bool run_mul_mat_on_backend(
         return false;
     }
 
-    // Quantize A to TQ2_0 and upload.
     const int blocks_per_row = K / QUANT_K_TQ2_0;
     const int total_blocks   = M * blocks_per_row;
-    std::vector<block_tq2_0> A_tq2(total_blocks);
-
-    for (int row = 0; row < M; row++) {
-        for (int b = 0; b < blocks_per_row; b++) {
-            quantize_to_tq2_0(&A_f32[row * K + b * QUANT_K_TQ2_0],
-                              &A_tq2[row * blocks_per_row + b]);
-        }
-    }
+    assert((int)A_tq2.size() == total_blocks);
 
     ggml_backend_tensor_set(tensor_a, A_tq2.data(), 0, total_blocks * sizeof(block_tq2_0));
 
@@ -427,15 +500,74 @@ static bool run_mul_mat_on_backend(
 // GPU Tests - Compare GPU (Vulkan) vs CPU
 // ============================================================================
 
-// GPU Test 1: Basic GPU vs CPU comparison
-static bool test_gpu_basic() {
-    printf("GPU Test 1: Basic GPU vs CPU comparison...\n");
-
+static bool run_test_case(const char* name, int M, int K,
+                          const std::vector<float>& A_f32,
+                          const std::vector<float>& B_f32,
+                          float max_rel_tol,
+                          float avg_rel_tol = -1.0f,
+                          float ref_abs_floor = 1e-6f) {
+    printf("Test: %s ... (M=%d, K=%d)\n", name, M, K);
     if (!g_gpu_available) {
         printf("  SKIPPED: No GPU backend available\n\n");
-        return true;  // Don't fail if GPU not available
+        return true;
     }
 
+    std::vector<block_tq2_0> A_tq2;
+    quantize_matrix_to_tq2_0(A_f32, A_tq2, M, K);
+
+    std::vector<float> out_cpu;
+    cpu_ref_mul_mat_tq2_0(A_tq2, B_f32, out_cpu, M, K);
+
+    std::vector<float> out_gpu;
+    if (!run_mul_mat_on_backend(g_backend_gpu, A_tq2, B_f32, out_gpu, M, K)) {
+        printf("  GPU computation failed\n");
+        printf("  FAILED\n\n");
+        return false;
+    }
+
+    float max_error = 0.0f;
+    float sum_error = 0.0f;
+    int valid_count = 0;
+    int num_large_errors = 0;
+    for (int i = 0; i < M; i++) {
+        const float error = fabsf(out_gpu[i] - out_cpu[i]);
+        const float denom = fabsf(out_cpu[i]);
+        if (denom > ref_abs_floor) {
+            const float rel_error = error / denom;
+            max_error = std::max(max_error, rel_error);
+            sum_error += rel_error;
+            valid_count++;
+            if (rel_error > 0.10f) num_large_errors++;
+        }
+    }
+    const float avg_error = valid_count > 0 ? sum_error / valid_count : 0.0f;
+
+    printf("  CPU[0]=% .4f  GPU[0]=% .4f\n", out_cpu[0], out_gpu[0]);
+    printf("  Max relative error: %.4f%%\n", max_error * 100.0f);
+    printf("  Avg relative error: %.4f%%\n", avg_error * 100.0f);
+    if (M > 1) {
+        if (valid_count > 0) {
+            printf("  Rows with >10%% error: %d/%d\n", num_large_errors, valid_count);
+        } else {
+            printf("  Rows with >10%% error: 0/0 (all reference outputs below threshold)\n");
+        }
+    }
+
+    dbg_dump_case(name, M, K, A_f32, B_f32, out_cpu, out_gpu);
+
+    bool passed = true;
+    if (max_rel_tol >= 0.0f) {
+        passed = passed && (max_error < max_rel_tol);
+    }
+    if (avg_rel_tol >= 0.0f) {
+        passed = passed && (avg_error < avg_rel_tol);
+    }
+    printf("  %s\n\n", result_str(passed));
+    return passed;
+}
+
+// GPU Test 1: Basic GPU vs CPU comparison
+static bool test_gpu_basic() {
     const int M = 4;
     const int K = 256;
 
@@ -447,90 +579,12 @@ static bool test_gpu_basic() {
     for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
     for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
 
-    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
-    std::vector<float> output_cpu;
-    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
-        printf("  CPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compute on GPU with TQ2_0
-    std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
-        printf("  GPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compare results
-    float max_error = 0.0f;
-    float sum_error = 0.0f;
-    for (int i = 0; i < M; i++) {
-        float error = fabsf(output_gpu[i] - output_cpu[i]);
-        float rel_error = error / (fabsf(output_cpu[i]) + 1e-6f);
-        max_error = std::max(max_error, rel_error);
-        sum_error += rel_error;
-    }
-    float avg_error = sum_error / M;
-
-    printf("  CPU results: [%.4f, %.4f, %.4f, %.4f]\n",
-           output_cpu[0], output_cpu[1], output_cpu[2], output_cpu[3]);
-    printf("  GPU results: [%.4f, %.4f, %.4f, %.4f]\n",
-           output_gpu[0], output_gpu[1], output_gpu[2], output_gpu[3]);
-    printf("  Max relative error: %.4f%%\n", max_error * 100.0f);
-    printf("  Avg relative error: %.4f%%\n", avg_error * 100.0f);
-
-    dbg_dump_case("gpu_basic", M, K, A_f32, B_f32, output_cpu, output_gpu);
-
-    // Allow some error due to different quantization paths
-    bool passed = max_error < 0.20f;  // 20% max error
-    printf("  %s\n\n", result_str(passed));
-    return passed;
+    return run_test_case("gpu_basic", M, K, A_f32, B_f32, 0.20f);
 }
 
 // ============================================================================
 // Small / deterministic tests (easy to inspect in debug.txt)
 // ============================================================================
-
-// Generic tiny-test runner. K must be a multiple of 256.
-static bool run_tiny_case(const char* name, int M, int K,
-                          const std::vector<float>& A_f32,
-                          const std::vector<float>& B_f32,
-                          float rel_tol) {
-    printf("GPU Tiny: %s ... (M=%d, K=%d)\n", name, M, K);
-    if (!g_gpu_available) {
-        printf("  SKIPPED: No GPU backend available\n\n");
-        return true;
-    }
-
-    std::vector<float> out_cpu;
-    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, out_cpu, M, K)) {
-        printf("  CPU computation failed\n  FAILED\n\n");
-        return false;
-    }
-    std::vector<float> out_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, out_gpu, M, K)) {
-        printf("  GPU computation failed\n  FAILED\n\n");
-        return false;
-    }
-
-    float max_error = 0.0f;
-    for (int i = 0; i < M; i++) {
-        float err = std::fabs(out_gpu[i] - out_cpu[i]);
-        float rel = err / (std::fabs(out_cpu[i]) + 1e-6f);
-        if (rel > max_error) max_error = rel;
-    }
-
-    printf("  CPU[0]=% .4f  GPU[0]=% .4f  max_rel_err=%.4f%%\n",
-           out_cpu[0], out_gpu[0], max_error * 100.0f);
-
-    dbg_dump_case(name, M, K, A_f32, B_f32, out_cpu, out_gpu);
-
-    bool passed = max_error < rel_tol;
-    printf("  %s\n\n", result_str(passed));
-    return passed;
-}
 
 // Tiny 1: single-block, single-row, A = all +1, B = all +1.
 // Expected CPU ref per-row ~= d_max * K (since quantized ternary is all +1).
@@ -538,7 +592,7 @@ static bool test_gpu_tiny_all_ones() {
     const int M = 1, K = 256;
     std::vector<float> A(M * K, 1.0f);
     std::vector<float> B(K,     1.0f);
-    return run_tiny_case("tiny_all_ones", M, K, A, B, 0.15f);
+    return run_test_case("tiny_all_ones", M, K, A, B, 0.15f);
 }
 
 // Tiny 2: single-block, single-row, A = all -1, B = all +1.
@@ -548,7 +602,7 @@ static bool test_gpu_tiny_all_neg_ones() {
     const int M = 1, K = 256;
     std::vector<float> A(M * K, -1.0f);
     std::vector<float> B(K,      1.0f);
-    return run_tiny_case("tiny_all_neg_ones", M, K, A, B, 0.15f);
+    return run_test_case("tiny_all_neg_ones", M, K, A, B, 0.15f);
 }
 
 // Tiny 3: mixed signs in A and B.  Each row has the same pattern repeating
@@ -567,7 +621,7 @@ static bool test_gpu_tiny_alternating() {
     for (int i = 0; i < K; i++) {
         B[i] = ((i / 2) % 2 == 0) ? 1.0f : -1.0f;
     }
-    return run_tiny_case("tiny_alternating", M, K, A, B, 0.20f);
+    return run_test_case("tiny_alternating", M, K, A, B, 0.20f);
 }
 
 // Tiny 4: single-block, single-row, A has only the first element non-zero.
@@ -580,7 +634,7 @@ static bool test_gpu_tiny_single_nonzero() {
     A[0] = 1.0f;
     std::vector<float> B(K, 0.0f);
     for (int i = 0; i < K; i++) B[i] = float(i + 1);  // B[0]=1, B[1]=2, ...
-    return run_tiny_case("tiny_single_nonzero", M, K, A, B, 0.15f);
+    return run_test_case("tiny_single_nonzero", M, K, A, B, 0.15f);
 }
 
 // Tiny 5: deterministic ramp on B, A is a repeating {-1, 0, +1, 0, ...} pattern.
@@ -597,7 +651,7 @@ static bool test_gpu_tiny_ramp() {
         }
     }
     for (int i = 0; i < K; i++) B[i] = float(i) / float(K);  // 0..1 ramp
-    return run_tiny_case("tiny_ramp", M, K, A, B, 0.20f);
+    return run_test_case("tiny_ramp", M, K, A, B, 0.20f);
 }
 
 // ============================================================================
@@ -605,13 +659,6 @@ static bool test_gpu_tiny_ramp() {
 // ============================================================================
 // GPU Test 2: Larger matrix GPU vs CPU comparison
 static bool test_gpu_larger_matrix() {
-    printf("GPU Test 2: Larger matrix GPU vs CPU comparison...\n");
-
-    if (!g_gpu_available) {
-        printf("  SKIPPED: No GPU backend available\n\n");
-        return true;
-    }
-
     const int M = 16;
     const int K = 1024;  // 4 TQ2_0 blocks per row
 
@@ -623,50 +670,11 @@ static bool test_gpu_larger_matrix() {
     for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
     for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
 
-    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
-    std::vector<float> output_cpu;
-    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
-        printf("  CPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compute on GPU
-    std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
-        printf("  GPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compare results
-    float max_error = 0.0f;
-    float sum_error = 0.0f;
-    for (int i = 0; i < M; i++) {
-        float error = fabsf(output_gpu[i] - output_cpu[i]);
-        float rel_error = error / (fabsf(output_cpu[i]) + 1e-6f);
-        max_error = std::max(max_error, rel_error);
-        sum_error += rel_error;
-    }
-    float avg_error = sum_error / M;
-
-    printf("  Max relative error: %.4f%%\n", max_error * 100.0f);
-    printf("  Avg relative error: %.4f%%\n", avg_error * 100.0f);
-
-    bool passed = max_error < 0.25f;  // 25% max error for larger matrix
-    printf("  %s\n\n", result_str(passed));
-    return passed;
+    return run_test_case("gpu_larger_matrix", M, K, A_f32, B_f32, 0.25f);
 }
 
 // GPU Test 3: Ternary-friendly data (values close to -1, 0, +1)
 static bool test_gpu_ternary_friendly() {
-    printf("GPU Test 3: Ternary-friendly data (values near -1, 0, +1)...\n");
-
-    if (!g_gpu_available) {
-        printf("  SKIPPED: No GPU backend available\n\n");
-        return true;
-    }
-
     const int M = 8;
     const int K = 256;
 
@@ -687,56 +695,11 @@ static bool test_gpu_ternary_friendly() {
         B_f32[i] = (v == 0.0f) ? 0.1f : v;
     }
 
-    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
-    std::vector<float> output_cpu;
-    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
-        printf("  CPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compute on GPU
-    std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
-        printf("  GPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compare results
-    float max_error = 0.0f;
-    float sum_error = 0.0f;
-    int valid_count = 0;
-    for (int i = 0; i < M; i++) {
-        float error = fabsf(output_gpu[i] - output_cpu[i]);
-        float denom = fabsf(output_cpu[i]);
-        if (denom > 1e-3f) {
-            float rel_error = error / denom;
-            max_error = std::max(max_error, rel_error);
-            sum_error += rel_error;
-            valid_count++;
-        }
-    }
-    float avg_error = valid_count > 0 ? sum_error / valid_count : 0.0f;
-
-    printf("  Max relative error: %.4f%%\n", max_error * 100.0f);
-    printf("  Avg relative error: %.4f%%\n", avg_error * 100.0f);
-
-    // Should have lower error for ternary-friendly data
-    bool passed = max_error < 0.15f;
-    printf("  %s\n\n", result_str(passed));
-    return passed;
+    return run_test_case("gpu_ternary_friendly", M, K, A_f32, B_f32, 0.15f, -1.0f, 1e-3f);
 }
 
 // GPU Test 4: Stress test with large matrix
 static bool test_gpu_stress() {
-    printf("GPU Test 4: Stress test with large matrix...\n");
-
-    if (!g_gpu_available) {
-        printf("  SKIPPED: No GPU backend available\n\n");
-        return true;
-    }
-
     const int M = 128;
     const int K = 4096;  // 16 TQ2_0 blocks per row
 
@@ -748,46 +711,7 @@ static bool test_gpu_stress() {
     for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
     for (int i = 0; i < K; i++) B_f32[i] = dist(rng);
 
-    // Compute on CPU using ggml's TQ2_0 mul_mat (reference)
-    std::vector<float> output_cpu;
-    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, output_cpu, M, K)) {
-        printf("  CPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compute on GPU
-    std::vector<float> output_gpu;
-    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, output_gpu, M, K)) {
-        printf("  GPU computation failed\n");
-        printf("  FAILED\n\n");
-        return false;
-    }
-
-    // Compare results
-    float max_error = 0.0f;
-    float sum_error = 0.0f;
-    int num_large_errors = 0;
-    for (int i = 0; i < M; i++) {
-        float error = fabsf(output_gpu[i] - output_cpu[i]);
-        float rel_error = error / (fabsf(output_cpu[i]) + 1e-6f);
-        max_error = std::max(max_error, rel_error);
-        sum_error += rel_error;
-        if (rel_error > 0.10f) num_large_errors++;
-    }
-    float avg_error = sum_error / M;
-
-    printf("  Matrix size: %d x %d (%d TQ2_0 blocks per row)\n", M, K, K / QUANT_K_TQ2_0);
-    printf("  Max relative error: %.4f%%\n", max_error * 100.0f);
-    printf("  Avg relative error: %.4f%%\n", avg_error * 100.0f);
-    printf("  Rows with >10%% error: %d/%d\n", num_large_errors, M);
-
-    // TQ2_0 is 2-bit ternary quantization - very lossy for random data
-    // High relative errors are expected for individual rows, but avg should be bounded
-    // The key test is that GPU and CPU produce similar results
-    bool passed = avg_error < 0.20f;  // Average error below 20%
-    printf("  %s\n\n", result_str(passed));
-    return passed;
+    return run_test_case("gpu_stress", M, K, A_f32, B_f32, -1.0f, 0.20f);
 }
 
 // ============================================================================
