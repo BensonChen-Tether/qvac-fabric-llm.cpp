@@ -20,6 +20,102 @@
 #include <vector>
 #include <string>
 
+// ============================================================================
+// Debug dump support
+// ----------------------------------------------------------------------------
+// Every test dumps its inputs, the CPU reference output, the GPU output, and
+// the per-element diff into ./debug.txt next to the binary's CWD.
+//
+// Normal stdout output (PASS/FAIL etc.) is unchanged; this is additional,
+// numerical detail meant to be diffed across devices / drivers.
+// ============================================================================
+
+static FILE* g_dbg = nullptr;
+
+static void dbg_open() {
+    if (g_dbg) return;
+    g_dbg = fopen("debug.txt", "w");
+    if (!g_dbg) {
+        fprintf(stderr, "debug dump: failed to open debug.txt for writing\n");
+        return;
+    }
+    fprintf(g_dbg, "TQ2_0 test debug dump\n");
+    fprintf(g_dbg, "=====================\n\n");
+}
+
+static void dbg_close() {
+    if (g_dbg) { fclose(g_dbg); g_dbg = nullptr; }
+}
+
+// Dump a full test case: inputs, CPU reference, GPU output, per-element diff.
+// Caps the amount of A printed to keep the dump readable for multi-row cases.
+// Always prints, regardless of build mode: writes to debug.txt when available,
+// otherwise falls back to stderr so the dump is never silently dropped.
+// Print a 2D matrix in a grid layout: one row per line, columns separated by
+// a single space. Caps row/col count so huge inputs stay readable.
+static void dbg_print_matrix(FILE* out, const char* label,
+                             const float* data, int rows, int cols,
+                             int max_rows, int max_cols) {
+    const int r_shown = std::min(rows, max_rows);
+    const int c_shown = std::min(cols, max_cols);
+
+    fprintf(out, "-- %s (%d x %d", label, rows, cols);
+    if (r_shown < rows || c_shown < cols) {
+        fprintf(out, ", showing %d x %d", r_shown, c_shown);
+    }
+    fprintf(out, ") --\n");
+
+    for (int r = 0; r < r_shown; ++r) {
+        for (int c = 0; c < c_shown; ++c) {
+            fprintf(out, "% 8.4f", data[r * cols + c]);
+            if (c + 1 < c_shown) fputc(' ', out);
+        }
+        if (c_shown < cols) fprintf(out, " ...");
+        fputc('\n', out);
+    }
+    if (r_shown < rows) {
+        fprintf(out, "... (%d more rows omitted)\n", rows - r_shown);
+    }
+    fputc('\n', out);
+}
+
+static void dbg_dump_case(const char* name, int M, int K,
+                          const std::vector<float>& A,
+                          const std::vector<float>& B,
+                          const std::vector<float>& out_cpu,
+                          const std::vector<float>& out_gpu) {
+    FILE* out = g_dbg ? g_dbg : stderr;
+
+    const int kMaxRowsPrint = 8;     // never dump more than 8 rows of A
+    const int kMaxColsPrint = 256;   // never dump more than one TQ2_0 block per row
+
+    fprintf(out, "======================================================================\n");
+    fprintf(out, "Test: %s\n", name);
+    fprintf(out, "Dims: M=%d, K=%d\n", M, K);
+    fprintf(out, "======================================================================\n\n");
+
+    // B is the input vector [1 x K].
+    dbg_print_matrix(out, "Input B", B.data(), 1, K, 1, kMaxColsPrint);
+
+    // A is the input matrix [M x K].
+    dbg_print_matrix(out, "Input A", A.data(), M, K, kMaxRowsPrint, kMaxColsPrint);
+
+    // Outputs as tall column vectors [M x 1], side by side.
+    fprintf(out, "-- Output (CPU ref vs GPU, per-row) --\n");
+    fprintf(out, "  %4s  %14s  %14s  %14s  %14s\n",
+            "row", "cpu", "gpu", "abs_diff", "rel_diff");
+    for (int i = 0; i < M; ++i) {
+        const float c = out_cpu[i];
+        const float g = out_gpu[i];
+        const float ad = std::fabs(g - c);
+        const float rd = ad / (std::fabs(c) + 1e-9f);
+        fprintf(out, "  [%3d] % 14.6f  % 14.6f  % 14.6g  % 14.6g\n",
+                i, c, g, ad, rd);
+    }
+    fprintf(out, "\n");
+    fflush(out);
+}
+
 // TQ2_0 format constants (from types.glsl)
 constexpr int QUANT_K_TQ2_0 = 256;  // Block size: 256 elements per block
 constexpr int QUANT_R_TQ2_0 = 4;    // 4 elements per byte (2 bits each)
@@ -385,12 +481,128 @@ static bool test_gpu_basic() {
     printf("  Max relative error: %.4f%%\n", max_error * 100.0f);
     printf("  Avg relative error: %.4f%%\n", avg_error * 100.0f);
 
+    dbg_dump_case("gpu_basic", M, K, A_f32, B_f32, output_cpu, output_gpu);
+
     // Allow some error due to different quantization paths
     bool passed = max_error < 0.20f;  // 20% max error
     printf("  %s\n\n", result_str(passed));
     return passed;
 }
 
+// ============================================================================
+// Small / deterministic tests (easy to inspect in debug.txt)
+// ============================================================================
+
+// Generic tiny-test runner. K must be a multiple of 256.
+static bool run_tiny_case(const char* name, int M, int K,
+                          const std::vector<float>& A_f32,
+                          const std::vector<float>& B_f32,
+                          float rel_tol) {
+    printf("GPU Tiny: %s ... (M=%d, K=%d)\n", name, M, K);
+    if (!g_gpu_available) {
+        printf("  SKIPPED: No GPU backend available\n\n");
+        return true;
+    }
+
+    std::vector<float> out_cpu;
+    if (!run_mul_mat_on_backend(g_backend_cpu, A_f32, B_f32, out_cpu, M, K)) {
+        printf("  CPU computation failed\n  FAILED\n\n");
+        return false;
+    }
+    std::vector<float> out_gpu;
+    if (!run_mul_mat_on_backend(g_backend_gpu, A_f32, B_f32, out_gpu, M, K)) {
+        printf("  GPU computation failed\n  FAILED\n\n");
+        return false;
+    }
+
+    float max_error = 0.0f;
+    for (int i = 0; i < M; i++) {
+        float err = std::fabs(out_gpu[i] - out_cpu[i]);
+        float rel = err / (std::fabs(out_cpu[i]) + 1e-6f);
+        if (rel > max_error) max_error = rel;
+    }
+
+    printf("  CPU[0]=% .4f  GPU[0]=% .4f  max_rel_err=%.4f%%\n",
+           out_cpu[0], out_gpu[0], max_error * 100.0f);
+
+    dbg_dump_case(name, M, K, A_f32, B_f32, out_cpu, out_gpu);
+
+    bool passed = max_error < rel_tol;
+    printf("  %s\n\n", result_str(passed));
+    return passed;
+}
+
+// Tiny 1: single-block, single-row, A = all +1, B = all +1.
+// Expected CPU ref per-row ~= d_max * K (since quantized ternary is all +1).
+static bool test_gpu_tiny_all_ones() {
+    const int M = 1, K = 256;
+    std::vector<float> A(M * K, 1.0f);
+    std::vector<float> B(K,     1.0f);
+    return run_tiny_case("tiny_all_ones", M, K, A, B, 0.15f);
+}
+
+// Tiny 2: single-block, single-row, A = all -1, B = all +1.
+// Expected CPU ref per-row ~= -d_max * K (all negative ternary).  Specifically
+// targets the case where TQ2_0 encodes all -1 (one of the TQ2_0 bug patterns).
+static bool test_gpu_tiny_all_neg_ones() {
+    const int M = 1, K = 256;
+    std::vector<float> A(M * K, -1.0f);
+    std::vector<float> B(K,      1.0f);
+    return run_tiny_case("tiny_all_neg_ones", M, K, A, B, 0.15f);
+}
+
+// Tiny 3: mixed signs in A and B.  Each row has the same pattern repeating
+// every 4 elements: A = [+1,-1,+1,-1,...], B = [1,1,-1,-1,1,1,-1,-1,...].
+// Easy to verify by hand: per-4 contribution = (+1*1)+(-1*1)+(+1*-1)+(-1*-1) = 0.
+// So each row should sum to ~0.
+static bool test_gpu_tiny_alternating() {
+    const int M = 2, K = 256;
+    std::vector<float> A(M * K);
+    std::vector<float> B(K);
+    for (int r = 0; r < M; r++) {
+        for (int i = 0; i < K; i++) {
+            A[r * K + i] = (i % 2 == 0) ? 1.0f : -1.0f;
+        }
+    }
+    for (int i = 0; i < K; i++) {
+        B[i] = ((i / 2) % 2 == 0) ? 1.0f : -1.0f;
+    }
+    return run_tiny_case("tiny_alternating", M, K, A, B, 0.20f);
+}
+
+// Tiny 4: single-block, single-row, A has only the first element non-zero.
+// Because TQ2_0 quantizes to {-1, 0, +1}, only elements whose magnitude is
+// >= 0.5*max end up non-zero.  Here max=1.0, so only A[0]=1.0 is kept; all
+// other elements quantize to 0.  Expected CPU ref = d_max * B[0].
+static bool test_gpu_tiny_single_nonzero() {
+    const int M = 1, K = 256;
+    std::vector<float> A(M * K, 0.0f);
+    A[0] = 1.0f;
+    std::vector<float> B(K, 0.0f);
+    for (int i = 0; i < K; i++) B[i] = float(i + 1);  // B[0]=1, B[1]=2, ...
+    return run_tiny_case("tiny_single_nonzero", M, K, A, B, 0.15f);
+}
+
+// Tiny 5: deterministic ramp on B, A is a repeating {-1, 0, +1, 0, ...} pattern.
+// Small enough that the full numerical trail fits comfortably in debug.txt.
+static bool test_gpu_tiny_ramp() {
+    const int M = 2, K = 256;
+    std::vector<float> A(M * K);
+    std::vector<float> B(K);
+    for (int r = 0; r < M; r++) {
+        for (int i = 0; i < K; i++) {
+            int mod = i % 4;
+            float v = (mod == 0) ? -1.0f : (mod == 2 ? 1.0f : 0.0f);
+            A[r * K + i] = v;
+        }
+    }
+    for (int i = 0; i < K; i++) B[i] = float(i) / float(K);  // 0..1 ramp
+    return run_tiny_case("tiny_ramp", M, K, A, B, 0.20f);
+}
+
+// ============================================================================
+// Larger tests
+// ============================================================================
 // GPU Test 2: Larger matrix GPU vs CPU comparison
 static bool test_gpu_larger_matrix() {
     printf("GPU Test 2: Larger matrix GPU vs CPU comparison...\n");
@@ -598,15 +810,27 @@ int main(int argc, char** argv) {
     }
     printf("\n");
 
+    dbg_open();
+
     int num_tests = 0;
     int num_passed = 0;
 
-    // GPU tests (TQ2_0 only)
+    // Small / deterministic tests (fast, inspectable in debug.txt).
+    printf("--- Tiny GPU vs CPU Tests (TQ2_0, deterministic) ---\n\n");
+    num_tests++; if (test_gpu_tiny_all_ones())       num_passed++;
+    num_tests++; if (test_gpu_tiny_all_neg_ones())   num_passed++;
+    num_tests++; if (test_gpu_tiny_alternating())    num_passed++;
+    num_tests++; if (test_gpu_tiny_single_nonzero()) num_passed++;
+    num_tests++; if (test_gpu_tiny_ramp())           num_passed++;
+
+    // Randomized + larger tests.
     printf("--- GPU vs CPU Comparison Tests (TQ2_0) ---\n\n");
-    num_tests++; if (test_gpu_basic()) num_passed++;
-    num_tests++; if (test_gpu_larger_matrix()) num_passed++;
+    num_tests++; if (test_gpu_basic())            num_passed++;
+    num_tests++; if (test_gpu_larger_matrix())    num_passed++;
     num_tests++; if (test_gpu_ternary_friendly()) num_passed++;
-    num_tests++; if (test_gpu_stress()) num_passed++;
+    num_tests++; if (test_gpu_stress())           num_passed++;
+
+    dbg_close();
 
     // Cleanup
     cleanup_backends();
