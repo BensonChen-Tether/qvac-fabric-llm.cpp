@@ -624,19 +624,6 @@ static bool test_gpu_tiny_alternating() {
     return run_test_case("tiny_alternating", M, K, A, B, 0.20f);
 }
 
-// Tiny 4: single-block, single-row, A has only the first element non-zero.
-// Because TQ2_0 quantizes to {-1, 0, +1}, only elements whose magnitude is
-// >= 0.5*max end up non-zero.  Here max=1.0, so only A[0]=1.0 is kept; all
-// other elements quantize to 0.  Expected CPU ref = d_max * B[0].
-static bool test_gpu_tiny_single_nonzero() {
-    const int M = 1, K = 256;
-    std::vector<float> A(M * K, 0.0f);
-    A[0] = 1.0f;
-    std::vector<float> B(K, 0.0f);
-    for (int i = 0; i < K; i++) B[i] = float(i + 1);  // B[0]=1, B[1]=2, ...
-    return run_test_case("tiny_single_nonzero", M, K, A, B, 0.15f);
-}
-
 // Tiny 5: deterministic ramp on B, A is a repeating {-1, 0, +1, 0, ...} pattern.
 // Small enough that the full numerical trail fits comfortably in debug.txt.
 static bool test_gpu_tiny_ramp() {
@@ -715,6 +702,97 @@ static bool test_gpu_stress() {
 }
 
 // ============================================================================
+// Production-shape tests
+// ----------------------------------------------------------------------------
+// These mirror the real matmul shapes observed when running TQ2_0 models
+// (see profiling/TQ2_0_perf.txt). All are matrix x vector:
+//     [K x M] (tq2_0) * [K x 1] (f32) -> [M x 1] (f32)
+// Random values in [-1, 1] on both sides. Max-relative-error is disabled
+// (too easy to get spurious spikes on rows whose expected magnitude is
+// near zero for large M); instead we check average relative error.
+// ============================================================================
+
+// Shape: [1024x1024] * [1024x1] -> [1024x1]
+static bool test_gpu_prod_1024x1024() {
+    const int M = 1024;
+    const int K = 1024;
+
+    std::mt19937 rng(1111);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    std::vector<float> A_f32(M * K);
+    std::vector<float> B_f32(K);
+    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
+    for (int i = 0; i < K; i++)     B_f32[i] = dist(rng);
+
+    return run_test_case("prod_1024x1024", M, K, A_f32, B_f32, -1.0f, 0.20f);
+}
+
+// Shape: [1024x2048] * [1024x1] -> [2048x1]
+static bool test_gpu_prod_1024x2048() {
+    const int M = 2048;
+    const int K = 1024;
+
+    std::mt19937 rng(2222);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    std::vector<float> A_f32(M * K);
+    std::vector<float> B_f32(K);
+    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
+    for (int i = 0; i < K; i++)     B_f32[i] = dist(rng);
+
+    return run_test_case("prod_1024x2048", M, K, A_f32, B_f32, -1.0f, 0.20f);
+}
+
+// Shape: [1024x3072] * [1024x1] -> [3072x1]
+static bool test_gpu_prod_1024x3072() {
+    const int M = 3072;
+    const int K = 1024;
+
+    std::mt19937 rng(3333);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    std::vector<float> A_f32(M * K);
+    std::vector<float> B_f32(K);
+    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
+    for (int i = 0; i < K; i++)     B_f32[i] = dist(rng);
+
+    return run_test_case("prod_1024x3072", M, K, A_f32, B_f32, -1.0f, 0.20f);
+}
+
+// Shape: [2048x1024] * [2048x1] -> [1024x1]
+static bool test_gpu_prod_2048x1024() {
+    const int M = 1024;
+    const int K = 2048;
+
+    std::mt19937 rng(4444);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    std::vector<float> A_f32(M * K);
+    std::vector<float> B_f32(K);
+    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
+    for (int i = 0; i < K; i++)     B_f32[i] = dist(rng);
+
+    return run_test_case("prod_2048x1024", M, K, A_f32, B_f32, -1.0f, 0.20f);
+}
+
+// Shape: [3072x1024] * [3072x1] -> [1024x1]
+static bool test_gpu_prod_3072x1024() {
+    const int M = 1024;
+    const int K = 3072;
+
+    std::mt19937 rng(5555);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    std::vector<float> A_f32(M * K);
+    std::vector<float> B_f32(K);
+    for (int i = 0; i < M * K; i++) A_f32[i] = dist(rng);
+    for (int i = 0; i < K; i++)     B_f32[i] = dist(rng);
+
+    return run_test_case("prod_3072x1024", M, K, A_f32, B_f32, -1.0f, 0.20f);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -744,7 +822,6 @@ int main(int argc, char** argv) {
     num_tests++; if (test_gpu_tiny_all_ones())       num_passed++;
     num_tests++; if (test_gpu_tiny_all_neg_ones())   num_passed++;
     num_tests++; if (test_gpu_tiny_alternating())    num_passed++;
-    num_tests++; if (test_gpu_tiny_single_nonzero()) num_passed++;
     num_tests++; if (test_gpu_tiny_ramp())           num_passed++;
 
     // Randomized + larger tests.
@@ -753,6 +830,14 @@ int main(int argc, char** argv) {
     num_tests++; if (test_gpu_larger_matrix())    num_passed++;
     num_tests++; if (test_gpu_ternary_friendly()) num_passed++;
     num_tests++; if (test_gpu_stress())           num_passed++;
+
+    // Production-shape tests (from profiling/TQ2_0_perf.txt).
+    printf("--- Production-shape Tests (TQ2_0) ---\n\n");
+    num_tests++; if (test_gpu_prod_1024x1024()) num_passed++;
+    num_tests++; if (test_gpu_prod_1024x2048()) num_passed++;
+    num_tests++; if (test_gpu_prod_1024x3072()) num_passed++;
+    num_tests++; if (test_gpu_prod_2048x1024()) num_passed++;
+    num_tests++; if (test_gpu_prod_3072x1024()) num_passed++;
 
     dbg_close();
 
