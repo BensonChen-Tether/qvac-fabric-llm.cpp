@@ -28,29 +28,17 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
     }
 
     const uint tid     = gl_LocalInvocationID.x;
-    const uint k       = (tid % 8) * 4;  // byte offset inside a 32-byte half
-    const uint vec_idx = k / 4;          // 0..7 -> qs[8] of an inner B sub-block
-
-    // Base A-row offset is loop-invariant across (jcol, i, h, n) but depends
-    // on `first_row + n`; recompute inline inside the n-loop. Kept as scalars
-    // (no precomputed array) to minimise live state => more waves per SP on
-    // Adreno.
+    const uint k       = (tid % 8) * 4;
+    const uint vec_idx = k / 4;        
     const uint ib0_base = a_offset / QUANT_K + first_row * num_blocks_per_row;
 
     for (uint jcol = 0; jcol < NUM_COLS; jcol++) {
         const uint b_base = (jcol * p.batch_stride_b);
 
-        // Loop order: i (K-block) outside, n (row) inside, so each
-        // block_q8_1_x4 of B is loaded exactly ONCE per K-block and reused
-        // across all `num_rows` rows (NUM_ROWS = 2 on Adreno => 2x fewer
-        // B-side LSU issues versus the original row-outer layout).
         for (uint i = tid/8; i < num_blocks_per_row; i += gl_WorkGroupSize.x/8) {
             [[unroll]] for (uint h = 0; h < 2; ++h) {
                 const uint j = h * 32u;
 
-                // ---------------- B: loaded once, shared across rows ----------------
-                // b_first is the first inner-block index (a multiple of 4 because
-                // j*4 is a multiple of QUANT_K_Q8_1 * 4), so b_outer = b_first / 4.
                 const uint b_first = b_offset + (b_base + i * QUANT_K + j * 4u) / QUANT_K_Q8_1;
                 const uint b_outer = b_first / 4u;
 
@@ -64,12 +52,6 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
                 const int32_t b2 = data_b[b_offset + b_outer].qs[2u * 8u + vec_idx];
                 const int32_t b3 = data_b[b_offset + b_outer].qs[3u * 8u + vec_idx];
 
-                // ---------------- Per-row A + compute ----------------
-                // `[[unroll]]` over the compile-time NUM_ROWS bound with a
-                // runtime `n < num_rows` guard: keeps `temp[jcol][n]` at a
-                // literal index per unrolled iteration (=> register-allocated)
-                // while still correctly handling the tail workgroup where the
-                // remaining rows are fewer than NUM_ROWS.
                 [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
                     if (n >= num_rows) { continue; }
 
@@ -77,8 +59,6 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
                     const float d      =  float(data_a[ib0 + i].d);
                     const float d_neg8 = -d * 0.125f;
 
-                    // Load 4 A-bytes via two aligned uint16 reads; derive the
-                    // four shift-level ternary-packed lane vectors from one uint.
                     const uint a_h_idx = (j + k) >> 1u;
                     const uint a_lo    = uint(data_a_packed16[ib0 + i].qs[a_h_idx    ]);
                     const uint a_hi    = uint(data_a_packed16[ib0 + i].qs[a_h_idx + 1]);
@@ -89,7 +69,6 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
                     const int32_t a2 = int32_t((v >> 4u)  & 0x03030303u);
                     const int32_t a3 = int32_t((v >> 6u)  & 0x03030303u);
 
-                    // Scalar FMAs: d * (q * ds.x)  +  (-d/8) * ds.y
                     FLOAT_TYPE acc = temp[jcol][n];
                     acc += ACC_TYPE(float(dotPacked4x8EXT(a0, b0)) * d * ds0.x + d_neg8 * ds0.y);
                     acc += ACC_TYPE(float(dotPacked4x8EXT(a1, b1)) * d * ds1.x + d_neg8 * ds1.y);
