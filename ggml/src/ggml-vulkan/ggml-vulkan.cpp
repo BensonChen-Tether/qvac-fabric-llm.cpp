@@ -3761,18 +3761,10 @@ static void ggml_vk_load_shaders(vk_device& device) {
     } else if (device->vendor_id == VK_VENDOR_ID_INTEL) {
         rm_stdq = 2;
         rm_stdq_int = 2;
+    } else if (device->architecture == vk_device_architecture::QUALCOMM_ADRENO) {
+        rm_stdq_int = 2;
     }
     uint32_t rm_iq = 2 * rm_kq;
-
-    // Row multiplier specifically for the TQ2_0 integer-dot mat-vec pipeline.
-    // On Adreno, the optimised mul_mat_vec_tq2_0_q.comp shares one
-    // block_q8_1_x4 of B across all rows handled by a workgroup, so doubling
-    // NUM_ROWS (2 -> 4) halves B-side LSU traffic. Register-pressure impact
-    // is small (+2 accumulators + a literal inner-loop iteration count).
-    uint32_t rm_stdq_int_tq2 = rm_stdq_int;
-    if (device->architecture == vk_device_architecture::QUALCOMM_ADRENO) {
-        rm_stdq_int_tq2 = 2 * rm_stdq_int;
-    }
 
     const bool use_subgroups = device->subgroup_arithmetic &&
         device->architecture != vk_device_architecture::AMD_GCN &&
@@ -3861,7 +3853,7 @@ static void ggml_vk_load_shaders(vk_device& device) {
                 const uint32_t subgroup_size_int = (device->vendor_id == VK_VENDOR_ID_INTEL && device->subgroup_size_control) ? device->subgroup_min_size : device->subgroup_size;
                 const uint32_t wg_size_subgroup_int = (w == DMMV_WG_SIZE_SUBGROUP) ? subgroup_size_int : (subgroup_size_int * 4);
 
-                ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_TQ2_0][i], "mul_mat_vec_tq2_0_q8_1_f32", arr_dmmv_tq2_0_q8_1_f32_len[reduc], arr_dmmv_tq2_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq_int_tq2, 1, 1}, {wg_size_subgroup_int, 2*rm_stdq_int_tq2, i+1}, 1, true, use_subgroups, subgroup_size_int);
+                ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_TQ2_0][i], "mul_mat_vec_tq2_0_q8_1_f32", arr_dmmv_tq2_0_q8_1_f32_len[reduc], arr_dmmv_tq2_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 2*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_TQ1_0][i], "mul_mat_vec_tq1_0_q8_1_f32", arr_dmmv_tq1_0_q8_1_f32_len[reduc], arr_dmmv_tq1_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 2*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
 
                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_q8_1_f32", arr_dmmv_q4_0_q8_1_f32_len[reduc], arr_dmmv_q4_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
