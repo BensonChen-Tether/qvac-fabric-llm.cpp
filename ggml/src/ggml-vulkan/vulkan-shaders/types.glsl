@@ -224,6 +224,23 @@ struct block_q8_1_x4_packed128
     ivec4 qs[8];
 };
 
+// Activation-side Q4_1 (signed 4-bit) format used by the integer-dot-product
+// matrix-vector kernels.  A "x8" outer block holds 8 sub-blocks of 32 elements
+// (256 elements total, matching one TQ2_0 block).  Each sub-block has its own
+// f16vec2 ds = (d, sum_q * d) with q the signed 4-bit value in [-7, 7] (or
+// [-8, 7] when clamped).  Nibbles are stored two-per-byte, so each sub-block
+// takes 16 bytes / 4 uint32_t (8 nibbles per uint32_t).
+struct block_q4_1_x8
+{
+    f16vec2  ds[8];
+    uint16_t qs[64];   // 64 * 16 bits = 256 nibbles
+};
+struct block_q4_1_x8_packed32
+{
+    f16vec2  ds[8];
+    uint32_t qs[32];   // 32 * 32 bits = 256 nibbles, 8 nibbles per uint
+};
+
 // K-quants
 #define QUANT_K_Q2_K 256
 

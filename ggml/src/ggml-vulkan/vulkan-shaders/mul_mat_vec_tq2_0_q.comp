@@ -6,7 +6,17 @@
 #define USE_SUBGROUP_ADD_NO_SHMEM 1
 #endif
 #define MMQ
+
+// Activation-side block selection.  The default Q8_1 path stores 8-bit signed
+// quantized activations and is the original integer-dot kernel.  When
+// DATA_B_Q4_1 is defined the kernel reads 4-bit signed nibbles (block_q4_1_x8)
+// and unpacks them to 8-bit values before feeding them to dotPacked4x8EXT.
+#ifdef DATA_B_Q4_1
+#define B_TYPE block_q4_1_x8
+#define B_TYPE_PACKED32 block_q4_1_x8_packed32
+#else
 #define B_TYPE block_q8_1_x4
+#endif
 
 #include "mul_mat_vec_base.glsl"
 #include "mul_mmq_funcs.comp"
@@ -14,6 +24,23 @@
 layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
 
 FLOAT_TYPE temp[NUM_COLS][NUM_ROWS];
+
+#ifdef DATA_B_Q4_1
+// Expand 4 packed 4-bit signed nibbles (low 16 bits of `nibbles16`) into
+// 4 packed 8-bit signed values.  Each nibble's bit 3 is the sign bit and is
+// extended into bits 4-7 of its destination byte.
+int32_t unpack_4_signed_nibbles(uint nibbles16) {
+    const uint n0 =  nibbles16        & 0xFu;
+    const uint n1 = (nibbles16 >> 4 ) & 0xFu;
+    const uint n2 = (nibbles16 >> 8 ) & 0xFu;
+    const uint n3 = (nibbles16 >> 12) & 0xFu;
+    const uint packed = n0 | (n1 << 8) | (n2 << 16) | (n3 << 24);
+    const uint sign   = packed & 0x08080808u;
+    // Replicate each nibble's sign bit across bits 4..7 of its byte.
+    const uint sign_extension = (sign << 1) | (sign << 2) | (sign << 3) | (sign << 4);
+    return int32_t(packed | sign_extension);
+}
+#endif
 
 void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
     uint a_offset, b_offset, d_offset;
@@ -29,7 +56,7 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
 
     const uint tid     = gl_LocalInvocationID.x;
     const uint k       = (tid % 8) * 4;
-    const uint vec_idx = k / 4;        
+    const uint vec_idx = k / 4;
     const uint ib0_base = a_offset / QUANT_K + first_row * num_blocks_per_row;
 
     for (uint jcol = 0; jcol < NUM_COLS; jcol++) {
@@ -39,6 +66,36 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
             [[unroll]] for (uint h = 0; h < 2; ++h) {
                 const uint j = h * 32u;
 
+#ifdef DATA_B_Q4_1
+                // 8 sub-blocks of 32 elements per outer block; one outer block
+                // matches one TQ2_0 (256-element) block exactly.  b_offset and
+                // b_base are in elements, so a single division converts them
+                // to outer-block indices.
+                const uint b_outer    = (b_offset + b_base) / 256u + i;
+                const uint sub_base_h = h * 4u;          // sub-block 0..3 for h=0, 4..7 for h=1.
+
+                // Each thread reads one 32-bit packed word (= 8 nibbles) per
+                // sub-block; vec_idx in [0..7] selects which thread within the
+                // sub-block, and pairs of threads share one 32-bit word.
+                const uint pair_idx = vec_idx >> 1;      // 0..3, picks the uint32 in the sub-block.
+                const uint half_idx = vec_idx & 1u;      // 0 = low 16 bits, 1 = high 16 bits.
+
+                const uint sb0_w = data_b_packed32[b_outer].qs[(sub_base_h + 0u) * 4u + pair_idx];
+                const uint sb1_w = data_b_packed32[b_outer].qs[(sub_base_h + 1u) * 4u + pair_idx];
+                const uint sb2_w = data_b_packed32[b_outer].qs[(sub_base_h + 2u) * 4u + pair_idx];
+                const uint sb3_w = data_b_packed32[b_outer].qs[(sub_base_h + 3u) * 4u + pair_idx];
+
+                const uint shift = half_idx * 16u;
+                const int32_t b0 = unpack_4_signed_nibbles((sb0_w >> shift) & 0xFFFFu);
+                const int32_t b1 = unpack_4_signed_nibbles((sb1_w >> shift) & 0xFFFFu);
+                const int32_t b2 = unpack_4_signed_nibbles((sb2_w >> shift) & 0xFFFFu);
+                const int32_t b3 = unpack_4_signed_nibbles((sb3_w >> shift) & 0xFFFFu);
+
+                const vec2 ds0 = vec2(data_b[b_outer].ds[sub_base_h + 0u]);
+                const vec2 ds1 = vec2(data_b[b_outer].ds[sub_base_h + 1u]);
+                const vec2 ds2 = vec2(data_b[b_outer].ds[sub_base_h + 2u]);
+                const vec2 ds3 = vec2(data_b[b_outer].ds[sub_base_h + 3u]);
+#else
                 const uint b_first = b_offset + (b_base + i * QUANT_K + j * 4u) / QUANT_K_Q8_1;
                 const uint b_outer = b_first / 4u;
 
@@ -51,6 +108,7 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
                 const int32_t b1 = data_b[b_offset + b_outer].qs[1u * 8u + vec_idx];
                 const int32_t b2 = data_b[b_offset + b_outer].qs[2u * 8u + vec_idx];
                 const int32_t b3 = data_b[b_offset + b_outer].qs[3u * 8u + vec_idx];
+#endif
 
                 [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
                     if (n >= num_rows) { continue; }

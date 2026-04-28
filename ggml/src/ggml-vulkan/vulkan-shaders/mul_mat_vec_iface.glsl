@@ -23,6 +23,9 @@ layout (binding = 1) readonly buffer BV2 {B_TYPE_VEC2 data_b_v2[];};
 #ifdef B_TYPE_VEC4
 layout (binding = 1) readonly buffer BV4 {B_TYPE_VEC4 data_b_v4[];};
 #endif
+#ifdef B_TYPE_PACKED32
+layout (binding = 1) readonly buffer BP32 {B_TYPE_PACKED32 data_b_packed32[];};
+#endif
 
 layout (binding = 2) writeonly buffer D {D_TYPE data_d[];};
 

@@ -571,6 +571,10 @@ struct vk_device_struct {
     bool integer_dot_product;
     // 0: default, 1: force mmvq, -1: disable mmvq
     int32_t mmvq_mode;
+    // Use Q4_1 (signed 4-bit) activation quantization instead of Q8_1 in the
+    // mat-vec MMQ path.  Currently only the TQ2_0 weight kernel implements
+    // this path; controlled by GGML_VK_USE_Q4_ACTIVATION.
+    bool use_q4_activation;
 
     bool subgroup_size_control;
     uint32_t subgroup_min_size;
@@ -631,6 +635,7 @@ struct vk_device_struct {
 
     vk_pipeline pipeline_matmul_split_k_reduce;
     vk_pipeline pipeline_quantize_q8_1_x4;
+    vk_pipeline pipeline_quantize_q4_1_x8;
 
     vk_pipeline pipeline_dequant[GGML_TYPE_COUNT];
     vk_pipeline pipeline_dequant_mul_mat_vec_f32_f32[DMMV_WG_SIZE_COUNT][GGML_TYPE_COUNT][mul_mat_vec_max_cols];
@@ -639,6 +644,10 @@ struct vk_device_struct {
 
     vk_pipeline pipeline_dequant_mul_mat_vec_q8_1_f32[DMMV_WG_SIZE_COUNT][GGML_TYPE_COUNT][mul_mat_vec_max_cols];
     vk_pipeline pipeline_dequant_mul_mat_vec_id_q8_1_f32[DMMV_WG_SIZE_COUNT][GGML_TYPE_COUNT];
+
+    // Q4_1 activation (signed 4-bit) variants.  Currently only populated for
+    // weight types where a kernel exists (TQ2_0).
+    vk_pipeline pipeline_dequant_mul_mat_vec_q4_1_f32[DMMV_WG_SIZE_COUNT][GGML_TYPE_COUNT][mul_mat_vec_max_cols];
 
     vk_pipeline pipeline_mul_mat_vec_p021_f16_f32[p021_max_gqa_ratio];
     vk_pipeline pipeline_mul_mat_vec_nc_f16_f32;
@@ -3856,6 +3865,11 @@ static void ggml_vk_load_shaders(vk_device& device) {
                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_TQ2_0][i], "mul_mat_vec_tq2_0_q8_1_f32", arr_dmmv_tq2_0_q8_1_f32_len[reduc], arr_dmmv_tq2_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 2*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_TQ1_0][i], "mul_mat_vec_tq1_0_q8_1_f32", arr_dmmv_tq1_0_q8_1_f32_len[reduc], arr_dmmv_tq1_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 2*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
 
+                // Q4_1 activation variant: same shape/wg as the q8_1 TQ2_0
+                // kernel since the threading model is unchanged; only the
+                // activation buffer layout differs.
+                ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q4_1_f32[w][GGML_TYPE_TQ2_0][i], "mul_mat_vec_tq2_0_q4_1_f32", arr_dmmv_tq2_0_q4_1_f32_len[reduc], arr_dmmv_tq2_0_q4_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 2*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
+
                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_q8_1_f32", arr_dmmv_q4_0_q8_1_f32_len[reduc], arr_dmmv_q4_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_1][i], "mul_mat_vec_q4_1_q8_1_f32", arr_dmmv_q4_1_q8_1_f32_len[reduc], arr_dmmv_q4_1_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q5_0][i], "mul_mat_vec_q5_0_q8_1_f32", arr_dmmv_q5_0_q8_1_f32_len[reduc], arr_dmmv_q5_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
@@ -4006,6 +4020,15 @@ static void ggml_vk_load_shaders(vk_device& device) {
         ggml_vk_create_pipeline(device, device->pipeline_quantize_q8_1_x4, "quantize_q8_1_x4", quantize_q8_1_x4_subgroup_len, quantize_q8_1_x4_subgroup_data, "main", 2, 1 * sizeof(uint32_t), {32 * device->subgroup_size / 8, 1, 1}, { device->subgroup_size }, 1, true, true);
     } else {
         ggml_vk_create_pipeline(device, device->pipeline_quantize_q8_1_x4, "quantize_q8_1_x4", quantize_q8_1_x4_len, quantize_q8_1_x4_data, "main", 2, 1 * sizeof(uint32_t), {32 * device->subgroup_size / 8, 1, 1}, { device->subgroup_size }, 1);
+    }
+
+    // Q4_1 activation quantizer.  Workgroup processes 32*subgroup_size/8 elements
+    // (same as the Q8_1 quantizer); 8 threads form one 32-element sub-block,
+    // and the dispatch passes element count via push constant `ne`.
+    if (device->subgroup_clustered && device->subgroup_require_full_support) {
+        ggml_vk_create_pipeline(device, device->pipeline_quantize_q4_1_x8, "quantize_q4_1_x8", quantize_q4_1_x8_subgroup_len, quantize_q4_1_x8_subgroup_data, "main", 2, 1 * sizeof(uint32_t), {32 * device->subgroup_size / 8, 1, 1}, { device->subgroup_size }, 1, true, true);
+    } else {
+        ggml_vk_create_pipeline(device, device->pipeline_quantize_q4_1_x8, "quantize_q4_1_x8", quantize_q4_1_x8_len, quantize_q4_1_x8_data, "main", 2, 1 * sizeof(uint32_t), {32 * device->subgroup_size / 8, 1, 1}, { device->subgroup_size }, 1);
     }
 
     for (uint32_t i = 0; i < p021_max_gqa_ratio; ++i) {
@@ -5223,6 +5246,9 @@ static vk_device ggml_vk_get_device(size_t idx) {
             device->mmvq_mode = 1;
         }
 
+        device->use_q4_activation = getenv("GGML_VK_USE_Q4_ACTIVATION") != nullptr;
+        device->use_q4_activation = true;
+
         return device;
     }
 
@@ -5778,7 +5804,7 @@ static vk_matmul_pipeline ggml_vk_get_mul_mat_mat_pipeline(ggml_backend_vk_conte
 
 static vk_pipeline ggml_vk_get_dequantize_mul_mat_vec(ggml_backend_vk_context * ctx, ggml_type a_type, ggml_type b_type, uint32_t num_cols, uint32_t m, uint32_t k) {
     VK_LOG_DEBUG("ggml_vk_get_dequantize_mul_mat_vec()");
-    GGML_ASSERT(b_type == GGML_TYPE_F32 || b_type == GGML_TYPE_F16 || b_type == GGML_TYPE_Q8_1);
+    GGML_ASSERT(b_type == GGML_TYPE_F32 || b_type == GGML_TYPE_F16 || b_type == GGML_TYPE_Q8_1 || b_type == GGML_TYPE_Q4_1);
     GGML_ASSERT(num_cols >= 1 && num_cols <= mul_mat_vec_max_cols);
 
     if (b_type == GGML_TYPE_Q8_1) {
@@ -5800,6 +5826,11 @@ static vk_pipeline ggml_vk_get_dequantize_mul_mat_vec(ggml_backend_vk_context * 
             default:
                 return nullptr;
         }
+    }
+
+    // Q4_1 activation path: only TQ2_0 weights have a kernel right now.
+    if (b_type == GGML_TYPE_Q4_1 && a_type != GGML_TYPE_TQ2_0) {
+        return nullptr;
     }
 
     switch (a_type) {
@@ -5859,6 +5890,16 @@ static vk_pipeline ggml_vk_get_dequantize_mul_mat_vec(ggml_backend_vk_context * 
             dmmv_wg = DMMV_WG_SIZE_SUBGROUP;
         }
         return ctx->device->pipeline_dequant_mul_mat_vec_q8_1_f32[dmmv_wg][a_type][num_cols-1];
+    }
+
+    if (b_type == GGML_TYPE_Q4_1) {
+        if (ctx->device->vendor_id == VK_VENDOR_ID_INTEL) {
+            dmmv_wg = DMMV_WG_SIZE_SUBGROUP;
+        }
+        if (ctx->device->vendor_id == VK_VENDOR_ID_QUALCOMM) {
+            dmmv_wg = DMMV_WG_SIZE_SUBGROUP;
+        }
+        return ctx->device->pipeline_dequant_mul_mat_vec_q4_1_f32[dmmv_wg][a_type][num_cols-1];
     }
 
     return b_type == GGML_TYPE_F32 ? ctx->device->pipeline_dequant_mul_mat_vec_f32_f32[dmmv_wg][a_type][num_cols-1] : ctx->device->pipeline_dequant_mul_mat_vec_f16_f32[dmmv_wg][a_type][num_cols-1];
@@ -6945,6 +6986,8 @@ static vk_pipeline ggml_vk_get_quantize_pipeline(ggml_backend_vk_context * ctx, 
     switch(type) {
         case GGML_TYPE_Q8_1:
             return ctx->device->pipeline_quantize_q8_1_x4;
+        case GGML_TYPE_Q4_1:
+            return ctx->device->pipeline_quantize_q4_1_x8;
         default:
             std::cerr << "Missing quantize pipeline for type: " << ggml_type_name(type) << std::endl;
             GGML_ABORT("fatal error");
@@ -6955,6 +6998,15 @@ static void ggml_vk_quantize_q8_1(ggml_backend_vk_context * ctx, vk_context& sub
     VK_LOG_DEBUG("ggml_vk_quantize_q8_1(" << "buffer in size=" << in.buffer->size << ", buffer out size=" << out.buffer->size << ", " << ne << ")");
 
     vk_pipeline pipeline = ggml_vk_get_quantize_pipeline(ctx, GGML_TYPE_Q8_1);
+
+    ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { in, out }, std::array<uint32_t, 1>{ne}, { ne, 1, 1 });
+    ggml_vk_sync_buffers(ctx, subctx);
+}
+
+static void ggml_vk_quantize_q4_1(ggml_backend_vk_context * ctx, vk_context& subctx, const vk_subbuffer & in, const vk_subbuffer & out, uint32_t ne) {
+    VK_LOG_DEBUG("ggml_vk_quantize_q4_1(" << "buffer in size=" << in.buffer->size << ", buffer out size=" << out.buffer->size << ", " << ne << ")");
+
+    vk_pipeline pipeline = ggml_vk_get_quantize_pipeline(ctx, GGML_TYPE_Q4_1);
 
     ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { in, out }, std::array<uint32_t, 1>{ne}, { ne, 1, 1 });
     ggml_vk_sync_buffers(ctx, subctx);
@@ -7598,6 +7650,14 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
     const bool f16_f32_kernel = src1->type == GGML_TYPE_F32;
     bool quantize_y = ctx->device->integer_dot_product && src1->type == GGML_TYPE_F32 && ggml_is_contiguous(src1) && !y_non_contig && (ne11 * ne10) % 4 == 0 && ggml_vk_should_use_mmvq(ctx->device, ne01, ne11, ne10, src0->type);
 
+    // Pick the activation quantization type.  Q4_1 is only enabled when
+    // GGML_VK_USE_Q4_ACTIVATION is set AND a kernel exists for this weight
+    // type (currently TQ2_0).  Otherwise we fall back to Q8_1.
+    ggml_type quant_b_type = GGML_TYPE_Q8_1;
+    if (quantize_y && ctx->device->use_q4_activation && src0->type == GGML_TYPE_TQ2_0 && (ne11 * ne10) % 256 == 0) {
+        quant_b_type = GGML_TYPE_Q4_1;
+    }
+
     vk_pipeline to_fp16_vk_0 = nullptr;
     vk_pipeline to_fp16_vk_1 = nullptr;
     if (x_non_contig) {
@@ -7610,8 +7670,15 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
     }
 
     // Check for mmq first
-    vk_pipeline dmmv = quantize_y ? ggml_vk_get_dequantize_mul_mat_vec(ctx, src0->type, GGML_TYPE_Q8_1, ne11, ne20, ne00) : nullptr;
-    vk_pipeline to_q8_1 = nullptr;
+    vk_pipeline dmmv = quantize_y ? ggml_vk_get_dequantize_mul_mat_vec(ctx, src0->type, quant_b_type, ne11, ne20, ne00) : nullptr;
+    vk_pipeline to_q     = nullptr;
+
+    // If the requested Q4_1 path has no kernel, retry with Q8_1 before giving
+    // up on the quantized activation path entirely.
+    if (dmmv == nullptr && quantize_y && quant_b_type == GGML_TYPE_Q4_1) {
+        quant_b_type = GGML_TYPE_Q8_1;
+        dmmv = ggml_vk_get_dequantize_mul_mat_vec(ctx, src0->type, quant_b_type, ne11, ne20, ne00);
+    }
 
     if (dmmv == nullptr) {
         // Fall back to f16 dequant mul mat
@@ -7620,7 +7687,7 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
     }
 
     if (quantize_y) {
-        to_q8_1 = ggml_vk_get_quantize_pipeline(ctx, GGML_TYPE_Q8_1);
+        to_q = ggml_vk_get_quantize_pipeline(ctx, quant_b_type);
     }
 
     const bool qx_needs_dequant = x_non_contig;
@@ -7638,8 +7705,21 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
 
     const uint64_t qx_sz = ggml_vk_align_size(ggml_type_size(src0->type) * x_ne / ggml_blck_size(src0->type), ctx->device->properties.limits.minStorageBufferOffsetAlignment);
     const uint64_t x_sz = x_non_contig ? ggml_vk_align_size(ggml_type_size(src0->type) * x_ne, ctx->device->properties.limits.minStorageBufferOffsetAlignment) : qx_sz;
-    const uint64_t y_sz = quantize_y ? (ggml_vk_align_size(y_ne, 128) * ggml_type_size(GGML_TYPE_Q8_1) / ggml_blck_size(GGML_TYPE_Q8_1)) :
-                         (f16_f32_kernel ? sizeof(float) * y_ne : sizeof(ggml_fp16_t) * y_ne);
+    // Q8_1 quantizer aligns to 128 elements (= 4 sub-blocks); Q4_1 uses x8
+    // outer blocks of 256 elements so we align to that boundary.  Per-element
+    // size also differs (1.0 byte for Q8_1 vs ~0.5 for Q4_1 plus headers).
+    uint64_t y_sz;
+    if (quantize_y) {
+        if (quant_b_type == GGML_TYPE_Q4_1) {
+            // 256 elements -> 32 + 128 = 160 bytes (block_q4_1_x8).
+            const uint64_t aligned_y_ne = ggml_vk_align_size(y_ne, 256);
+            y_sz = (aligned_y_ne / 256) * 160;
+        } else {
+            y_sz = ggml_vk_align_size(y_ne, 128) * ggml_type_size(GGML_TYPE_Q8_1) / ggml_blck_size(GGML_TYPE_Q8_1);
+        }
+    } else {
+        y_sz = f16_f32_kernel ? sizeof(float) * y_ne : sizeof(ggml_fp16_t) * y_ne;
+    }
 
     {
         if (
@@ -7664,7 +7744,7 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
             ggml_pipeline_request_descriptor_sets(ctx, to_fp16_vk_1, 1);
         }
         if (quantize_y) {
-            ggml_pipeline_request_descriptor_sets(ctx, to_q8_1, 1);
+            ggml_pipeline_request_descriptor_sets(ctx, to_q, 1);
         }
         ggml_pipeline_request_descriptor_sets(ctx, dmmv, 1);
     }
@@ -7707,13 +7787,17 @@ static void ggml_vk_mul_mat_vec_q_f16(ggml_backend_vk_context * ctx, vk_context&
         }
     }
     if (quantize_y) {
-        if (ctx->prealloc_y_last_pipeline_used != to_q8_1.get() ||
+        if (ctx->prealloc_y_last_pipeline_used != to_q.get() ||
             ctx->prealloc_y_last_tensor_used != src1) {
             if (ctx->prealloc_y_need_sync) {
                 ggml_vk_sync_buffers(ctx, subctx);
             }
-            ggml_vk_quantize_q8_1(ctx, subctx, d_Qy, d_Y, y_ne);
-            ctx->prealloc_y_last_pipeline_used = to_q8_1.get();
+            if (quant_b_type == GGML_TYPE_Q4_1) {
+                ggml_vk_quantize_q4_1(ctx, subctx, d_Qy, d_Y, y_ne);
+            } else {
+                ggml_vk_quantize_q8_1(ctx, subctx, d_Qy, d_Y, y_ne);
+            }
+            ctx->prealloc_y_last_pipeline_used = to_q.get();
             ctx->prealloc_y_last_tensor_used = src1;
         }
     }

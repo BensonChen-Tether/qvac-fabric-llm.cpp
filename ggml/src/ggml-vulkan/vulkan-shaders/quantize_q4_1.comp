@@ -1,0 +1,124 @@
+#version 450
+
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+#ifdef USE_SUBGROUPS
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_clustered : require
+
+#define INVOCATION_ID gl_SubgroupInvocationID.x
+#else
+#define INVOCATION_ID gl_LocalInvocationID.x
+#endif
+
+layout (push_constant) uniform parameter
+{
+    uint ne;
+} p;
+
+#include "types.glsl"
+
+layout(constant_id = 0) const uint GROUP_SIZE = 32;
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = 0) readonly  buffer A {vec4 data_a[];};
+layout (binding = 1) writeonly buffer D {block_q4_1_x8 data_b[];};
+
+#ifndef USE_SUBGROUPS
+shared float shmem[GROUP_SIZE];
+#endif
+
+// Quantize 32-element activation sub-blocks into 4-bit signed nibbles, packed
+// 4-per-uint16, with per-sub-block (d, sum_q*d) like q8_1.  Eight sub-blocks
+// of 32 elements (256 elements total) form one block_q4_1_x8 outer block; this
+// matches one TQ2_0 weight block exactly.
+void quantize() {
+    const uint wgid = gl_WorkGroupID.x;
+    const uint tid  = INVOCATION_ID;
+
+    // Each thread handles a vec4 (4 elements), 8 threads form a sub-block of 32.
+    const uint blocks_per_group = GROUP_SIZE / 8;
+    const uint block_in_wg      = tid / 8;
+    const uint ib               = wgid * blocks_per_group + block_in_wg;
+    const uint iqs              = tid % 8;
+
+    // 8 sub-blocks per outer block_q4_1_x8.
+    const uint ibx8_outer = ib / 8;
+    const uint ibx8_inner = ib % 8;
+
+    const uint required_x8_blocks = (p.ne + 255) / 256;
+    if (ibx8_outer >= required_x8_blocks) {
+        return;
+    }
+
+    const uint a_idx = ib * 8 + iqs;
+    const vec4 vals_in   = a_idx < p.ne / 4 ? data_a[a_idx] : vec4(0.0f);
+    const vec4 abs_vals  = abs(vals_in);
+
+    // Find absolute max for each 32-element sub-block (8 threads).
+    const float thread_max = max(max(abs_vals.x, abs_vals.y), max(abs_vals.z, abs_vals.w));
+#ifndef USE_SUBGROUPS
+    shmem[tid] = thread_max;
+    barrier();
+    [[unroll]] for (uint s = 4; s > 0; s >>= 1) {
+        if (iqs < s) {
+            shmem[tid] = max(shmem[tid], shmem[tid + s]);
+        }
+        barrier();
+    }
+    const float amax = shmem[block_in_wg * 8];
+#else
+    const float amax = subgroupClusteredMax(thread_max, 8);
+#endif
+
+    // Use range [-7, 7] (symmetric).  d = amax / 7 maps the extreme value to 7.
+    const float d     = amax / 7.0;
+    const float d_inv = d != 0.0 ? 1.0 / d : 0.0;
+    const vec4  vals  = round(vals_in * d_inv);
+    // Clamp to signed 4-bit range; we use [-7, 7] to keep the quantization
+    // symmetric, even though 4-bit two's complement supports -8.
+    const vec4  vals_clamped = clamp(vals, vec4(-7.0), vec4(7.0));
+
+    // Pack four 4-bit signed nibbles into a single uint16_t.
+    // Nibble layout (low-to-high bits): q.x, q.y, q.z, q.w.
+    const i8vec4 q = i8vec4(vals_clamped);
+    const uint   n0 = uint(q.x) & 0xFu;
+    const uint   n1 = uint(q.y) & 0xFu;
+    const uint   n2 = uint(q.z) & 0xFu;
+    const uint   n3 = uint(q.w) & 0xFu;
+    const uint   packed16 = n0 | (n1 << 4) | (n2 << 8) | (n3 << 12);
+    data_b[ibx8_outer].qs[ibx8_inner * 8 + iqs] = uint16_t(packed16);
+
+#ifndef USE_SUBGROUPS
+    barrier();
+#endif
+
+    // Per-sub-block sum of signed quantized values, used to build the q8_1-
+    // style ds.y = sum * d term that lets the matmul kernel cancel the bias
+    // introduced by treating TQ2_0 nibbles {0,1,2} as raw multipliers.
+    const float thread_sum = vals_clamped.x + vals_clamped.y + vals_clamped.z + vals_clamped.w;
+#ifndef USE_SUBGROUPS
+    shmem[tid] = thread_sum;
+    barrier();
+    [[unroll]] for (uint s = 4; s > 0; s >>= 1) {
+        if (iqs < s) {
+            shmem[tid] += shmem[tid + s];
+        }
+        barrier();
+    }
+#else
+    const float sum = subgroupClusteredAdd(thread_sum, 8);
+#endif
+    if (iqs == 0) {
+#ifndef USE_SUBGROUPS
+        const float sum = shmem[tid];
+#endif
+        data_b[ibx8_outer].ds[ibx8_inner] = f16vec2(vec2(d, sum * d));
+    }
+}
+
+void main() {
+    quantize();
+}

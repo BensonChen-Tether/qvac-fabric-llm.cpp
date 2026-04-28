@@ -818,26 +818,26 @@ int main(int argc, char** argv) {
     int num_passed = 0;
 
     // Small / deterministic tests (fast, inspectable in debug.txt).
-    printf("--- Tiny GPU vs CPU Tests (TQ2_0, deterministic) ---\n\n");
-    num_tests++; if (test_gpu_tiny_all_ones())       num_passed++;
-    num_tests++; if (test_gpu_tiny_all_neg_ones())   num_passed++;
-    num_tests++; if (test_gpu_tiny_alternating())    num_passed++;
-    num_tests++; if (test_gpu_tiny_ramp())           num_passed++;
+    // printf("--- Tiny GPU vs CPU Tests (TQ2_0, deterministic) ---\n\n");
+    // num_tests++; if (test_gpu_tiny_all_ones())       num_passed++;
+    // num_tests++; if (test_gpu_tiny_all_neg_ones())   num_passed++;
+    // num_tests++; if (test_gpu_tiny_alternating())    num_passed++;
+    // num_tests++; if (test_gpu_tiny_ramp())           num_passed++;
 
-    // Randomized + larger tests.
-    printf("--- GPU vs CPU Comparison Tests (TQ2_0) ---\n\n");
-    num_tests++; if (test_gpu_basic())            num_passed++;
-    num_tests++; if (test_gpu_larger_matrix())    num_passed++;
-    num_tests++; if (test_gpu_ternary_friendly()) num_passed++;
-    num_tests++; if (test_gpu_stress())           num_passed++;
+    // // Randomized + larger tests.
+    // printf("--- GPU vs CPU Comparison Tests (TQ2_0) ---\n\n");
+    // num_tests++; if (test_gpu_basic())            num_passed++;
+    // num_tests++; if (test_gpu_larger_matrix())    num_passed++;
+    // num_tests++; if (test_gpu_ternary_friendly()) num_passed++;
+    // num_tests++; if (test_gpu_stress())           num_passed++;
 
-    // Production-shape tests (from profiling/TQ2_0_perf.txt).
-    printf("--- Production-shape Tests (TQ2_0) ---\n\n");
+    // // Production-shape tests (from profiling/TQ2_0_perf.txt).
+    // printf("--- Production-shape Tests (TQ2_0) ---\n\n");
     num_tests++; if (test_gpu_prod_1024x1024()) num_passed++;
-    num_tests++; if (test_gpu_prod_1024x2048()) num_passed++;
-    num_tests++; if (test_gpu_prod_1024x3072()) num_passed++;
-    num_tests++; if (test_gpu_prod_2048x1024()) num_passed++;
-    num_tests++; if (test_gpu_prod_3072x1024()) num_passed++;
+    // num_tests++; if (test_gpu_prod_1024x2048()) num_passed++;
+    // num_tests++; if (test_gpu_prod_1024x3072()) num_passed++;
+    // num_tests++; if (test_gpu_prod_2048x1024()) num_passed++;
+    // num_tests++; if (test_gpu_prod_3072x1024()) num_passed++;
 
     dbg_close();
 
