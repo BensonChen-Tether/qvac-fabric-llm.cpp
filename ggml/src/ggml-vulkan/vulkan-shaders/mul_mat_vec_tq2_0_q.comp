@@ -42,39 +42,36 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
                 const uint b_first = b_offset + (b_base + i * QUANT_K + j * 4u) / QUANT_K_Q8_1;
                 const uint b_outer = b_first / 4u;
 
-                const vec2 ds0 = vec2(data_b[b_offset + b_outer].ds[0]);
-                const vec2 ds1 = vec2(data_b[b_offset + b_outer].ds[1]);
-                const vec2 ds2 = vec2(data_b[b_offset + b_outer].ds[2]);
-                const vec2 ds3 = vec2(data_b[b_offset + b_outer].ds[3]);
+                [[unroll]] for (uint qpair = 0; qpair < 2; ++qpair) {
+                    const uint q0 = qpair * 2u;
+                    const uint q1 = q0 + 1u;
 
-                const int32_t b0 = data_b[b_offset + b_outer].qs[0u * 8u + vec_idx];
-                const int32_t b1 = data_b[b_offset + b_outer].qs[1u * 8u + vec_idx];
-                const int32_t b2 = data_b[b_offset + b_outer].qs[2u * 8u + vec_idx];
-                const int32_t b3 = data_b[b_offset + b_outer].qs[3u * 8u + vec_idx];
+                    const vec2 dsa = vec2(data_b[b_offset + b_outer].ds[q0]);
+                    const vec2 dsb = vec2(data_b[b_offset + b_outer].ds[q1]);
 
-                [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
-                    if (n >= num_rows) { continue; }
+                    const int32_t ba = data_b[b_offset + b_outer].qs[q0 * 8u + vec_idx];
+                    const int32_t bb = data_b[b_offset + b_outer].qs[q1 * 8u + vec_idx];
 
-                    const uint  ib0    = ib0_base + n * num_blocks_per_row;
-                    const float d      =  float(data_a[ib0 + i].d);
-                    const float d_neg8 = -d * 0.125f;
+                    [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
+                        if (n >= num_rows) { continue; }
 
-                    const uint a_h_idx = (j + k) >> 1u;
-                    const uint a_lo    = uint(data_a_packed16[ib0 + i].qs[a_h_idx    ]);
-                    const uint a_hi    = uint(data_a_packed16[ib0 + i].qs[a_h_idx + 1]);
-                    const uint v       = a_lo | (a_hi << 16);
+                            const uint  ib0    = ib0_base + n * num_blocks_per_row;
+                            const float d      =  float(data_a[ib0 + i].d);
+                            const float d_neg8 = -d * 0.125f;
 
-                    const int32_t a0 = int32_t( v         & 0x03030303u);
-                    const int32_t a1 = int32_t((v >> 2u)  & 0x03030303u);
-                    const int32_t a2 = int32_t((v >> 4u)  & 0x03030303u);
-                    const int32_t a3 = int32_t((v >> 6u)  & 0x03030303u);
+                            const uint a_h_idx = (j + k) >> 1u;
+                            const uint a_lo    = uint(data_a_packed16[ib0 + i].qs[a_h_idx    ]);
+                            const uint a_hi    = uint(data_a_packed16[ib0 + i].qs[a_h_idx + 1]);
+                            const uint v       = a_lo | (a_hi << 16);
 
-                    FLOAT_TYPE acc = temp[jcol][n];
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a0, b0)) * d * ds0.x + d_neg8 * ds0.y);
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a1, b1)) * d * ds1.x + d_neg8 * ds1.y);
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a2, b2)) * d * ds2.x + d_neg8 * ds2.y);
-                    acc += ACC_TYPE(float(dotPacked4x8EXT(a3, b3)) * d * ds3.x + d_neg8 * ds3.y);
-                    temp[jcol][n] = acc;
+                            const int32_t aa = int32_t((v >> (q0 * 2u)) & 0x03030303u);
+                            const int32_t ab = int32_t((v >> (q1 * 2u)) & 0x03030303u);
+
+                            FLOAT_TYPE acc = temp[jcol][n];
+                            acc += ACC_TYPE(float(dotPacked4x8EXT(aa, ba)) * d * dsa.x + d_neg8 * dsa.y);
+                            acc += ACC_TYPE(float(dotPacked4x8EXT(ab, bb)) * d * dsb.x + d_neg8 * dsb.y);
+                            temp[jcol][n] = acc;
+                        }
                 }
             }
         }
