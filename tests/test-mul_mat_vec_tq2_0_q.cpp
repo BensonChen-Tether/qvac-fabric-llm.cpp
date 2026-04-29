@@ -792,6 +792,21 @@ static bool test_gpu_prod_3072x1024() {
     return run_test_case("prod_3072x1024", M, K, A_f32, B_f32, -1.0f, 0.20f);
 }
 
+// Repeat the production-shape tests `iter` times. Returns true only if every
+// invocation of every production test passes.
+static bool stress_test(int iter) {
+    bool passed = true;
+    for (int i = 0; i < iter; ++i) {
+        printf("Stress iteration %d/%d\n", i + 1, iter);
+        passed = test_gpu_prod_1024x1024() && passed;
+        passed = test_gpu_prod_1024x2048() && passed;
+        passed = test_gpu_prod_1024x3072() && passed;
+        passed = test_gpu_prod_2048x1024() && passed;
+        passed = test_gpu_prod_3072x1024() && passed;
+    }
+    return passed;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -838,6 +853,9 @@ int main(int argc, char** argv) {
     num_tests++; if (test_gpu_prod_1024x3072()) num_passed++;
     num_tests++; if (test_gpu_prod_2048x1024()) num_passed++;
     num_tests++; if (test_gpu_prod_3072x1024()) num_passed++;
+
+    printf("--- Production-shape Stress Test (TQ2_0) ---\n\n");
+    num_tests++; if (stress_test(50)) num_passed++;
 
     dbg_close();
 
