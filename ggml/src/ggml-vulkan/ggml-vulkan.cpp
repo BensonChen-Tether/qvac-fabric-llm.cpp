@@ -3761,6 +3761,8 @@ static void ggml_vk_load_shaders(vk_device& device) {
     } else if (device->vendor_id == VK_VENDOR_ID_INTEL) {
         rm_stdq = 2;
         rm_stdq_int = 2;
+    } else if (device->architecture == vk_device_architecture::QUALCOMM_ADRENO) {
+        rm_stdq_int = 2;
     }
     uint32_t rm_iq = 2 * rm_kq;
 

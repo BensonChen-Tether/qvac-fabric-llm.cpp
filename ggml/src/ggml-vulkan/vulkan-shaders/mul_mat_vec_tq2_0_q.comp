@@ -2,6 +2,9 @@
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_integer_dot_product : require
 
+#ifndef USE_SUBGROUP_ADD_NO_SHMEM
+#define USE_SUBGROUP_ADD_NO_SHMEM 1
+#endif
 #define MMQ
 #define B_TYPE block_q8_1_x4
 
@@ -24,57 +27,53 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
         }
     }
 
-    const uint tid = gl_LocalInvocationID.x;
+    const uint tid     = gl_LocalInvocationID.x;
+    const uint k       = (tid % 8) * 4;
+    const uint vec_idx = k / 4;        
+    const uint ib0_base = a_offset / QUANT_K + first_row * num_blocks_per_row;
 
     for (uint jcol = 0; jcol < NUM_COLS; jcol++) {
         const uint b_base = (jcol * p.batch_stride_b);
-        for (uint n = 0; n < num_rows; ++n) {
-            const uint ib0 = a_offset / QUANT_K + (first_row + n) * num_blocks_per_row;
-            FLOAT_TYPE acc = 0.0f;
-            for (uint i = tid/8; i < num_blocks_per_row; i+=gl_WorkGroupSize.x/8) {
-                const float d = float(data_a[ib0 + i].d);
-                [[unroll]] for (uint j = 0; j < 64; j += 32) {
-                    [[unroll]] for (uint l = 0; l < 4; l+=2) {
-                        uint k = (tid % 8) * 4;
 
-                        const uint shift0 = l * 2u;
-                        const int c00 = int(((data_a[ib0 + i].qs[j + k]) >> shift0) & 3u);
-                        const int c01 = int(((data_a[ib0 + i].qs[j + k + 1]) >> shift0) & 3u);
-                        const int c02 = int(((data_a[ib0 + i].qs[j + k + 2]) >> shift0) & 3u);
-                        const int c03 = int(((data_a[ib0 + i].qs[j + k + 3]) >> shift0) & 3u);
-                        const int32_t a0_packed = c00 | (c01 << 8) | (c02 << 16) | (c03 << 24);
-                        const uint b0_idx = i * QUANT_K + j * 4 + l * 32;
+        for (uint i = tid/8; i < num_blocks_per_row; i += gl_WorkGroupSize.x/8) {
+            [[unroll]] for (uint h = 0; h < 2; ++h) {
+                const uint j = h * 32u;
 
-                        const uint shift1 = (l+1) * 2u;
-                        const int c10 = int(((data_a[ib0 + i].qs[j + k]) >> shift1) & 3u);
-                        const int c11 = int(((data_a[ib0 + i].qs[j + k + 1]) >> shift1) & 3u);
-                        const int c12 = int(((data_a[ib0 + i].qs[j + k + 2]) >> shift1) & 3u);
-                        const int c13 = int(((data_a[ib0 + i].qs[j + k + 3]) >> shift1) & 3u);
-                        const int32_t a1_packed = c10 | (c11 << 8) | (c12 << 16) | (c13 << 24);
-                        const uint b1_idx = i * QUANT_K + j * 4 + (l+1) * 32;
+                const uint b_first = b_offset + (b_base + i * QUANT_K + j * 4u) / QUANT_K_Q8_1;
+                const uint b_outer = b_first / 4u;
 
-                        // Not checking for OOB since we're guaranteed to be multiple of 256
-                        const uint b0_block_idx = b_offset + (b_base + b0_idx) / QUANT_K_Q8_1;
-                        const uint b1_block_idx = b_offset + (b_base + b1_idx) / QUANT_K_Q8_1;
-                        const uint b0_block_idx_outer = b0_block_idx / 4;
-                        const uint b1_block_idx_outer = b1_block_idx / 4;
-                        const uint b0_block_idx_inner = b0_block_idx % 4;
-                        const uint b1_block_idx_inner = b1_block_idx % 4;
-                        vec2 ds0 = vec2(data_b[b_offset + b0_block_idx_outer].ds[b0_block_idx_inner]);
-                        vec2 ds1 = vec2(data_b[b_offset + b1_block_idx_outer].ds[b1_block_idx_inner]);
+                [[unroll]] for (uint qpair = 0; qpair < 2; ++qpair) {
+                    const uint q0 = qpair * 2u;
+                    const uint q1 = q0 + 1u;
 
-                        const uint vec_idx = k / 4;
-                        int32_t b0_packed = data_b[b_offset + b0_block_idx_outer].qs[b0_block_idx_inner * 8 + vec_idx];
-                        int32_t b1_packed = data_b[b_offset + b1_block_idx_outer].qs[b1_block_idx_inner * 8 + vec_idx];
+                    const vec2 dsa = vec2(data_b[b_offset + b_outer].ds[q0]);
+                    const vec2 dsb = vec2(data_b[b_offset + b_outer].ds[q1]);
 
-                        int32_t q0_sum = dotPacked4x8EXT(a0_packed, b0_packed);
-                        int32_t q1_sum = dotPacked4x8EXT(a1_packed, b1_packed);
-                        acc += ACC_TYPE(d * (FLOAT_TYPE(q0_sum) * ds0.x - FLOAT_TYPE(1.0f / 8) * ds0.y));
-                        acc += ACC_TYPE(d * (FLOAT_TYPE(q1_sum) * ds1.x - FLOAT_TYPE(1.0f / 8) * ds1.y));
-                    }
+                    const int32_t ba = data_b[b_offset + b_outer].qs[q0 * 8u + vec_idx];
+                    const int32_t bb = data_b[b_offset + b_outer].qs[q1 * 8u + vec_idx];
+
+                    [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
+                        if (n >= num_rows) { continue; }
+
+                            const uint  ib0    = ib0_base + n * num_blocks_per_row;
+                            const float d      =  float(data_a[ib0 + i].d);
+                            const float d_neg8 = -d * 0.125f;
+
+                            const uint a_h_idx = (j + k) >> 1u;
+                            const uint a_lo    = uint(data_a_packed16[ib0 + i].qs[a_h_idx    ]);
+                            const uint a_hi    = uint(data_a_packed16[ib0 + i].qs[a_h_idx + 1]);
+                            const uint v       = a_lo | (a_hi << 16);
+
+                            const int32_t aa = int32_t((v >> (q0 * 2u)) & 0x03030303u);
+                            const int32_t ab = int32_t((v >> (q1 * 2u)) & 0x03030303u);
+
+                            FLOAT_TYPE acc = temp[jcol][n];
+                            acc += ACC_TYPE(float(dotPacked4x8EXT(aa, ba)) * d * dsa.x + d_neg8 * dsa.y);
+                            acc += ACC_TYPE(float(dotPacked4x8EXT(ab, bb)) * d * dsb.x + d_neg8 * dsb.y);
+                            temp[jcol][n] = acc;
+                        }
                 }
             }
-            temp[jcol][n] = acc;
         }
     }
 

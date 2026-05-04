@@ -1401,11 +1401,22 @@ struct block_tq2_0
     float16_t d;
 };
 
+// 16-bit view of the same data. Block is 66 bytes (64 qs + 2 d), so 2-byte
+// alignment matches the on-disk layout and the array stride stays at 66.
+// Enables 2-byte (and with a small packing step, 4-byte) loads instead of
+// emulated byte loads, which are very costly on Adreno.
+struct block_tq2_0_packed16
+{
+    uint16_t qs[QUANT_K_TQ2_0/QUANT_R_TQ2_0/2];  // 32 x uint16
+    float16_t d;
+};
+
 #if defined(DATA_A_TQ2_0)
 #define QUANT_K QUANT_K_TQ2_0
 #define QUANT_R QUANT_R_TQ2_0
 #define QUANT_AUXF 1
 #define A_TYPE block_tq2_0
+#define A_TYPE_PACKED16 block_tq2_0_packed16
 #endif
 
 #define QUANT_K_MXFP4 32
