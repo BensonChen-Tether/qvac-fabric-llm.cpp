@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Llama Bench</string>
+    <string name="gguf_hint">Select a GGUF model file to run llama-bench.</string>
+    <string name="bench_hint">Benchmark results will appear here.</string>
+    <string name="bench_args">llama-bench -p 64 -n 32 -ngl 99 -r 20 (Vulkan GPU)</string>
+    <string name="pick_gguf">Pick GGUF model</string>
+    <string name="parsing_gguf">Parsing GGUF…</string>
+    <string name="copying_file">Copying model file…</string>
+    <string name="running_bench">Running llama-bench on %1$s…</string>
+    <string name="bench_running">Running llama-bench. This may take several minutes.</string>
+    <string name="bench_done">Benchmark finished.</string>
+    <string name="bench_failed">Benchmark failed.</string>
+</resources>

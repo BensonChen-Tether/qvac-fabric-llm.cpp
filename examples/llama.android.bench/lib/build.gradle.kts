@@ -3,8 +3,27 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.android)
 }
 
+import java.io.File
+
+val useVulkan = providers.gradleProperty("llamaBench.backend")
+    .map { it.equals("vulkan", ignoreCase = true) }
+    .getOrElse(true)
+
+fun firstExisting(vararg paths: String): String? =
+    paths.firstOrNull { File(it).exists() }
+
+fun vulkanIncludeDir(): String =
+    System.getenv("VULKAN_SDK")?.let { "$it/Include" }?.takeIf { File(it).isDirectory }
+        ?: firstExisting("/opt/homebrew/include", "/usr/local/include")
+        ?: "/opt/homebrew/include"
+
+fun vulkanGlslc(): String =
+    System.getenv("VULKAN_SDK")?.let { "$it/bin/glslc" }?.takeIf { File(it).canExecute() }
+        ?: firstExisting("/usr/local/bin/glslc", "/opt/homebrew/bin/glslc")
+        ?: "glslc"
+
 android {
-    namespace = "com.arm.aichat"
+    namespace = "com.arm.llamabench"
     compileSdk = 36
 
     ndkVersion = "27.0.12077973"
@@ -16,7 +35,11 @@ android {
         consumerProguardFiles("consumer-rules.pro")
 
         ndk {
-             abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += if (useVulkan) {
+                listOf("arm64-v8a")
+            } else {
+                listOf("arm64-v8a", "x86_64")
+            }
         }
         externalNativeBuild {
             cmake {
@@ -27,11 +50,23 @@ android {
                 arguments += "-DBUILD_SHARED_LIBS=ON"
                 arguments += "-DLLAMA_BUILD_COMMON=ON"
                 arguments += "-DLLAMA_OPENSSL=OFF"
-
                 arguments += "-DGGML_NATIVE=OFF"
-                arguments += "-DGGML_BACKEND_DL=ON"
-                arguments += "-DGGML_CPU_ALL_VARIANTS=ON"
                 arguments += "-DGGML_LLAMAFILE=OFF"
+
+                if (useVulkan) {
+                    arguments += "-DGGML_VULKAN=ON"
+                    arguments += "-DGGML_BACKEND_DL=OFF"
+                    arguments += "-DGGML_CPU_ALL_VARIANTS=OFF"
+                    arguments += "-DGGML_OPENMP=OFF"
+                    arguments += "-DGGML_VULKAN_BUILD_ADRENO_SHADERS=ON"
+                    arguments += "-DVulkan_INCLUDE_DIR=${vulkanIncludeDir()}"
+                    arguments += "-DVulkan_GLSLC_EXECUTABLE=${vulkanGlslc()}"
+                    arguments += "-DCMAKE_C_FLAGS=-march=armv8.7a"
+                    arguments += "-DCMAKE_CXX_FLAGS=-march=armv8.7a"
+                } else {
+                    arguments += "-DGGML_BACKEND_DL=ON"
+                    arguments += "-DGGML_CPU_ALL_VARIANTS=ON"
+                }
             }
         }
         aarMetadata {
