@@ -165,38 +165,44 @@ void kernel_mul_mv_tq2_0_f32_impl(
         ushort tiisg,
         ushort sgitg) {
 
-    const int nb = args.ne00/QK_K;
-    const int r0 = tgpig.x;
-    const int r1 = tgpig.y;
-    const int im = tgpig.z;
+    const int nb = args.ne00/QK_K; // number of blocks in each row
+    const int r0 = tgpig.x; // work group index in x dimension
+    const int r1 = tgpig.y; // work group index in y dimension
+    const int im = tgpig.z; // work group in z dimension
 
-    const int first_row = (r0 * N_SG_TQ2_0 + sgitg) * N_R0_TQ2_0;
+    const int first_row = (r0 * N_SG_TQ2_0 + sgitg) * N_R0_TQ2_0; // compute the first row of the weigth to be processed
 
-    const uint i12 = im%args.ne12;
-    const uint i13 = im/args.ne12;
+    const uint i12 = im%args.ne12; // column slice of batch
+    const uint i13 = im/args.ne12; // row slice of batch
 
-    const uint64_t offset0 = first_row*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
-    const uint64_t offset1 =        r1*args.nb11 + (i12        )*args.nb12 + (i13        )*args.nb13;
+    const uint64_t offset0 = first_row*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03; // offset into the weight tensor
+    const uint64_t offset1 =        r1*args.nb11 + (i12        )*args.nb12 + (i13        )*args.nb13; // offset into the vector tensor
 
     device const block_tq2_0 * x = (device const block_tq2_0 *) (src0 + offset0);
     device const float       * y = (device const float       *) (src1 + offset1);
 
-    float yl[32];
-    float sumf[N_R0_TQ2_0] = {0.f};
+    float yl[32]; // 32 elements of the vector tensor
+    float sumf[N_R0_TQ2_0] = {0.f}; // each warp processes N_R0_TQ2_0 rows of the weight tensor
     float all_sum;
 
     const int step = sizeof(block_tq2_0) * nb / 2;
 
-    const int ix = tiisg/8;  // 0...3
+    // every 8 threads in a warp process a different block of the weight tensor
+    const int ix = tiisg/8;  // 0...3  which block this thread is processing
     const int it = tiisg%8;  // 0...7
     const int iq = it/4;     // 0 or 1
     const int ir = it%4;     // 0...3
 
     device const float * y4 = y + ix * QK_K + 128 * iq + 8 * ir;
 
+    // nb = 4 if K = 1024
+    // nb = 16 if K = 4096
+    // nb = 32 if K = 8192
     for (int ib = ix; ib < nb; ib += 4) {
 
         float sumy = 0.f;
+        
+        #pragma unroll
         for (int i = 0; i < 8; ++i) {
             yl[i+ 0] = y4[i+ 0]; sumy += yl[i+ 0];
             yl[i+ 8] = y4[i+32]; sumy += yl[i+ 8];
@@ -207,10 +213,13 @@ void kernel_mul_mv_tq2_0_f32_impl(
         device const half     * dh = &x[ib].d;
         device const uint16_t * qs = (device const uint16_t *) x[ib].qs + 16 * iq + 4 * ir;
 
+        #pragma unroll
         for (int row = 0; row < N_R0_TQ2_0; row++) {
 
             float4 acc1 = {0.f, 0.f, 0.f, 0.f};
             float4 acc2 = {0.f, 0.f, 0.f, 0.f};
+            
+            #pragma unroll
             for (int i = 0; i < 8; i += 2) {
                 acc1[0] += yl[i+ 0] * (qs[i/2] & 0x0003);
                 acc2[0] += yl[i+ 1] * (qs[i/2] & 0x0300);
