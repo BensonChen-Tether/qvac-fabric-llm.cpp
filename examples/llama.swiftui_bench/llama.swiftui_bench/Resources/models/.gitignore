@@ -1,0 +1,3 @@
+# Ignore bundled model files; keep this directory for optional local GGUF only.
+*
+!.gitignore

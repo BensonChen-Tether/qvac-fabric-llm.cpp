@@ -1,0 +1,32 @@
+# macOS / Xcode user state
+.DS_Store
+xcuserdata/
+*.xcuserstate
+
+# Xcode build products (if built inside this example)
+DerivedData/
+build/
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Prebuilt llama.cpp (built at repo root via build-xcframework.sh)
+*.xcframework/
+*.framework/
+*.a
+*.dylib
+
+# Model weights and related binaries (download at runtime or place locally)
+*.gguf
+*.gguf.json
+*.ggml
+*.bin
+
+# Finetune / dataset payloads users may add locally
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# Stale project name from upstream llama.swiftui sample
+llama.swiftui.xcodeproj/
