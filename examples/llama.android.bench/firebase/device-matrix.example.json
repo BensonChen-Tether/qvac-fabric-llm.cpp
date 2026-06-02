@@ -1,0 +1,7 @@
+[
+  { "model": "oriole",  "version": "33", "locale": "en", "orientation": "portrait" },
+  { "model": "panther", "version": "34", "locale": "en", "orientation": "portrait" },
+  { "model": "bluejay", "version": "33", "locale": "en", "orientation": "portrait" },
+  { "model": "cheetah", "version": "33", "locale": "en", "orientation": "portrait" },
+  { "model": "raven",   "version": "34", "locale": "en", "orientation": "portrait" }
+]

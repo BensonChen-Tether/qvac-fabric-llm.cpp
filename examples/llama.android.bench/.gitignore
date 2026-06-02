@@ -1,0 +1,44 @@
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Log/OS Files
+*.log
+
+# Android Studio generated files and folders
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+output.json
+
+# IntelliJ
+*.iml
+.idea/
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services (e.g. APIs or Firebase)
+google-services.json
+
+# Android Profiling
+*.hprof
+
+# Kotlin/Gradle caches (project root)
+.kotlin/
+
+# GGUF models (downloaded locally or passed as MODEL_PATH; often 100MB–2GB+)
+*.gguf
+
+# llama-bench binaries copied into assets during native build
+app/src/main/assets/bin/**
+!app/src/main/assets/bin/.gitkeep

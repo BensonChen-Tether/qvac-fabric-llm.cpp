@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">llama-bench</string>
+    <string name="download_model">Download model from Hugging Face</string>
+    <string name="pick_or_run_model">Pick local model or run benchmark</string>
+    <string name="choose_model_family">Choose model family</string>
+    <string name="choose_model_variant">Choose model variant</string>
+    <string name="download">Download</string>
+    <string name="cancel">Cancel</string>
+</resources>

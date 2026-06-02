@@ -1,0 +1,8 @@
+config.env
+testlab_results/
+reports/
+
+# Python (benchmark_firebase.py)
+__pycache__/
+*.pyc
+.venv/
