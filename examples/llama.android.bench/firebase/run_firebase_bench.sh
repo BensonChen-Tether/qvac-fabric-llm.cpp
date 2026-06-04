@@ -176,14 +176,26 @@ if [[ "$DOWNLOAD_RESULTS" == "1" ]]; then
   else
     echo "Downloading Test Lab artifacts..."
     mkdir -p "$RESULTS_DIR"
-    gsutil -m cp -r "${GCS_RESULTS_DIR}/*" "$RESULTS_DIR/" || true
-    gsutil -m cp -r "${GCS_RESULTS_DIR}/" "$RESULTS_DIR/" || true
+    gsutil -m cp -r "${GCS_RESULTS_DIR}/*" "$RESULTS_DIR/"
 
+    EXCEL_PATH="$RESULTS_DIR/benchmark.xlsx"
     echo "Generating Excel report..."
-    python3 "$FIREBASE_DIR/benchmark_firebase.py" --results-dir "$RESULTS_DIR"
+    python3 "$FIREBASE_DIR/benchmark_firebase.py" \
+      --results-dir "$RESULTS_DIR" \
+      --output "$EXCEL_PATH" \
+      --extract-json
+
+    echo
+    echo "Benchmark output retrieved:"
+    echo "  Local artifacts: $RESULTS_DIR"
+    echo "  JSON extracts:   $RESULTS_DIR/extracted/"
+    echo "  Excel report:    $EXCEL_PATH"
+    echo "  GCS (cloud):     $GCS_RESULTS_DIR"
+    echo
+    echo "Re-fetch later without re-running Test Lab:"
+    echo "  ./firebase/fetch_firebase_results.sh ${GCS_RESULTS_DIR}"
   fi
 else
   echo "Skipped local download. Fetch results later with:"
-  echo "  gsutil -m cp -r ${GCS_RESULTS_DIR} firebase/testlab_results/"
-  echo "  python3 firebase/benchmark_firebase.py --results-dir firebase/testlab_results/<folder>"
+  echo "  ./firebase/fetch_firebase_results.sh ${GCS_RESULTS_DIR}"
 fi

@@ -53,6 +53,15 @@ android {
     }
 }
 
+// llama-bench is copied into app assets by :lib's CMake POST_BUILD step; ensure
+// native build finishes before assets are merged into the APK.
+afterEvaluate {
+    tasks.matching { it.name == "mergeDebugAssets" || it.name == "mergeReleaseAssets" }
+        .configureEach {
+            dependsOn(":lib:externalNativeBuildRelease")
+        }
+}
+
 dependencies {
     implementation(libs.bundles.androidx)
     implementation(libs.material)
