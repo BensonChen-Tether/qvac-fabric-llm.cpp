@@ -14,6 +14,7 @@ Options:
   -d, --devices FILE     JSON device matrix (default: firebase/device-matrix.json)
   -D, --device SPEC      Single device spec, repeatable. Example:
                            --device model=oriole,version=33,locale=en,orientation=portrait
+      --skip-build       Skip Gradle build (APKs must already exist)
   -h, --help             Show this help
 
 Environment / config.env:
@@ -22,6 +23,7 @@ Environment / config.env:
   RESULTS_BUCKET         gs:// bucket for Test Lab output
   DEFAULT_MODEL_PATH     Model when MODEL_PATH is omitted
   DEFAULT_REPETITIONS    llama-bench -r value (default: 5)
+  N_GPU_LAYERS           llama-bench -ngl value (0 = CPU only, default: 999)
   TEST_TIMEOUT           Per-device timeout (default: 45m)
 
 Examples:
@@ -48,11 +50,13 @@ fi
 
 MODEL_PATH="${DEFAULT_MODEL_PATH:-qwen3-1.7B/Qwen3-1.7B-Q4_K_M.gguf}"
 REPETITIONS="${REPETITIONS:-${DEFAULT_REPETITIONS:-5}}"
+N_GPU_LAYERS="${N_GPU_LAYERS:-${DEFAULT_N_GPU_LAYERS:-999}}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-45m}"
 DEVICE_MATRIX="${DEVICE_MATRIX:-$FIREBASE_DIR/device-matrix.json}"
 RESULTS_BUCKET="${RESULTS_BUCKET:-}"
 GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
 DOWNLOAD_RESULTS="${DOWNLOAD_RESULTS:-1}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
 DEVICE_SPECS=()
 
 while [[ $# -gt 0 ]]; do
@@ -68,6 +72,10 @@ while [[ $# -gt 0 ]]; do
     -D|--device)
       DEVICE_SPECS+=("$2")
       shift 2
+      ;;
+    --skip-build)
+      SKIP_BUILD=1
+      shift
       ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -100,6 +108,9 @@ APP_APK="$ROOT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 TEST_APK="$ROOT_DIR/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 RUN_ID="$(date +%Y%m%d_%H%M%S)"
 SAFE_MODEL_PATH="${MODEL_PATH//\//_}"
+if [[ "$N_GPU_LAYERS" == "0" ]]; then
+  SAFE_MODEL_PATH="${SAFE_MODEL_PATH}_cpu"
+fi
 RESULTS_DIR="$FIREBASE_DIR/testlab_results/${SAFE_MODEL_PATH}_${RUN_ID}"
 GCS_RESULTS_DIR="${RESULTS_BUCKET%/}/bench/${SAFE_MODEL_PATH}/${RUN_ID}"
 
@@ -143,14 +154,25 @@ else
   exit 1
 fi
 
-echo "Building APKs..."
 cd "$ROOT_DIR"
-./gradlew assembleDebug assembleDebugAndroidTest
+if [[ "$SKIP_BUILD" == "1" ]]; then
+  echo "Skipping Gradle build (--skip-build)."
+  for apk in "$APP_APK" "$TEST_APK"; do
+    if [[ ! -f "$apk" ]]; then
+      echo "Missing APK: $apk (run without --skip-build first)" >&2
+      exit 1
+    fi
+  done
+else
+  echo "Building APKs..."
+  ./gradlew assembleDebug assembleDebugAndroidTest
+fi
 
 echo "Running Firebase Test Lab..."
 echo "  Project:     $GCP_PROJECT_ID"
 echo "  Model:       $MODEL_PATH"
 echo "  Repetitions: $REPETITIONS"
+echo "  GPU layers:  $N_GPU_LAYERS"
 if [[ ${#DEVICE_SPECS[@]} -gt 0 ]]; then
   echo "  Devices:"
   for spec in "${DEVICE_SPECS[@]}"; do
@@ -166,7 +188,7 @@ gcloud firebase test android run \
   --test "$TEST_APK" \
   "${GCLOUD_DEVICE_ARGS[@]}" \
   --timeout "$TEST_TIMEOUT" \
-  --environment-variables "model_path=${MODEL_PATH},repetitions=${REPETITIONS},skip_download=false" \
+  --environment-variables "model_path=${MODEL_PATH},repetitions=${REPETITIONS},n_gpu_layers=${N_GPU_LAYERS},skip_download=false" \
   --results-bucket "${RESULTS_BUCKET#gs://}" \
   --results-dir "bench/${SAFE_MODEL_PATH}/${RUN_ID}"
 

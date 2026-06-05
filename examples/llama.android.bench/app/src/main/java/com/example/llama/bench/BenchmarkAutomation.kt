@@ -28,16 +28,18 @@ object BenchmarkAutomation {
         context: Context,
         modelPathInRepo: String,
         repetitions: Int = BenchConfig.AUTOMATION_REPETITIONS,
+        nGpuLayers: Int = BenchConfig.DEFAULT_N_GPU_LAYERS,
         skipDownloadIfCached: Boolean = true,
     ): RunResult = withContext(Dispatchers.IO) {
         val modelFile = ensureModel(context, modelPathInRepo, skipDownloadIfCached)
         val config = BenchConfig(
             repetitions = repetitions,
+            nGpuLayers = nGpuLayers,
             jsonOutput = true,
         )
 
         val benchOutput = LlamaBenchRunner.run(context, modelFile.absolutePath, config)
-        val meta = buildMeta(context, modelPathInRepo, modelFile, repetitions)
+        val meta = buildMeta(context, modelPathInRepo, modelFile, repetitions, nGpuLayers)
         val metaFile = writeText(context, META_FILE, meta.toString())
         val resultFile = writeText(context, RESULT_FILE, benchOutput.trim())
 
@@ -78,6 +80,7 @@ object BenchmarkAutomation {
         modelPathInRepo: String,
         modelFile: File,
         repetitions: Int,
+        nGpuLayers: Int,
     ): JSONObject {
         return JSONObject().apply {
             put("model_path", modelPathInRepo)
@@ -86,7 +89,7 @@ object BenchmarkAutomation {
             put("repetitions", repetitions)
             put("prompt_tokens", BenchConfig.DEFAULT_PROMPT_TOKENS)
             put("gen_tokens", BenchConfig.DEFAULT_GEN_TOKENS)
-            put("n_gpu_layers", BenchConfig.DEFAULT_N_GPU_LAYERS)
+            put("n_gpu_layers", nGpuLayers)
             put("repo_id", HuggingFaceModels.REPO_ID)
             put("device_model", Build.MODEL)
             put("device", Build.DEVICE)

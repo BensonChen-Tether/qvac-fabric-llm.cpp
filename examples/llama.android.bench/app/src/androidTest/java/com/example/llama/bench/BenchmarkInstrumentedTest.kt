@@ -27,12 +27,15 @@ class BenchmarkInstrumentedTest {
                 ?: DEFAULT_MODEL_PATH
             val repetitions = args.getString("repetitions")?.toIntOrNull()
                 ?: BenchConfig.AUTOMATION_REPETITIONS
+            val nGpuLayers = args.getString("n_gpu_layers")?.toIntOrNull()
+                ?: BenchConfig.DEFAULT_N_GPU_LAYERS
             val skipDownload = args.getString("skip_download")?.toBoolean() ?: true
 
             val result = BenchmarkAutomation.run(
                 context = InstrumentationRegistry.getInstrumentation().targetContext,
                 modelPathInRepo = modelPath,
                 repetitions = repetitions,
+                nGpuLayers = nGpuLayers,
                 skipDownloadIfCached = skipDownload,
             )
 
