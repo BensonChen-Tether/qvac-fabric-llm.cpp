@@ -645,9 +645,41 @@ class LlamaState: ObservableObject {
         ),
         // bonsai-1.7B
         Model(
+            name: "Bonsai-1.7B (Q1_0, 0.23 GiB)",
+            url: LlamaState.tetherGgufModelURL(path: "bonsai-1.7B/Bonsai-1.7B-Q1_0.gguf"),
+            filename: "Bonsai-1.7B-Q1_0.gguf",
+            status: "download"
+        ),
+        Model(
             name: "Bonsai-1.7B (Q2_0, 0.43 GiB)",
             url: LlamaState.tetherGgufModelURL(path: "bonsai-1.7B/Bonsai-1.7B-Q2_0.gguf"),
             filename: "Bonsai-1.7B-Q2_0.gguf",
+            status: "download"
+        ),
+        // bonsai-4B
+        Model(
+            name: "Bonsai-4B (Q1_0, 0.53 GiB)",
+            url: LlamaState.tetherGgufModelURL(path: "bonsai-4B/Bonsai-4B-Q1_0.gguf"),
+            filename: "Bonsai-4B-Q1_0.gguf",
+            status: "download"
+        ),
+        Model(
+            name: "Bonsai-4B (Q2_0, 1.0 GiB)",
+            url: LlamaState.tetherGgufModelURL(path: "bonsai-4B/Bonsai-4B-Q2_0.gguf"),
+            filename: "Bonsai-4B-Q2_0.gguf",
+            status: "download"
+        ),
+        // bonsai-8B
+        Model(
+            name: "Bonsai-8B (Q1_0, 1.08 GiB)",
+            url: LlamaState.tetherGgufModelURL(path: "bonsai-8B/Bonsai-8B-Q1_0.gguf"),
+            filename: "Bonsai-8B-Q1_0.gguf",
+            status: "download"
+        ),
+        Model(
+            name: "Bonsai-8B (Q2_0, 2.0 GiB)",
+            url: LlamaState.tetherGgufModelURL(path: "bonsai-8B/Bonsai-8B-Q2_0.gguf"),
+            filename: "Bonsai-8B-Q2_0.gguf",
             status: "download"
         ),
     ]

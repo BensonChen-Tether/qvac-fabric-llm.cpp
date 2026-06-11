@@ -21,7 +21,7 @@ and is not part of this bench example.)
 
 Bundle identifier: `llama-collabora-bench` (distinct from the sample app's `llama-collabora`).
 
-Built-in model downloads come from [Benson-Chen/tether-gguf-models](https://huggingface.co/Benson-Chen/tether-gguf-models) on Hugging Face (Qwen3 0.6B/1.7B and Bonsai 1.7B quantizations).
+Built-in model downloads come from [Benson-Chen/tether-gguf-models](https://huggingface.co/Benson-Chen/tether-gguf-models) on Hugging Face (Qwen3 0.6B/1.7B and Bonsai 1.7B/4B/8B quantizations).
 
 To use the framework with a different project, add `build-apple/llama.xcframework` via drag-and-drop
 or in "Frameworks, Libraries, and Embedded Content" in project settings.

@@ -4,10 +4,23 @@ struct ContentView: View {
     @StateObject var llamaState = LlamaState()
     @State private var multiLineText = ""
     @State private var showingHelp = false    // To track if Help Sheet should be shown
+    @State private var automationStatus = ""
+    @State private var automationComplete = false
 
     var body: some View {
         NavigationView {
             VStack {
+                if BenchmarkAutomation.shouldRunOnLaunch() {
+                    Text(automationStatus.isEmpty ? "Running benchmark automation…" : automationStatus)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                    if automationComplete {
+                        Text("BENCH_COMPLETE")
+                            .accessibilityIdentifier("BENCH_COMPLETE")
+                    }
+                }
+
                 ScrollView(.vertical, showsIndicators: true) {
                     Text(llamaState.messageLog)
                         .font(.system(size: 12))
@@ -56,6 +69,17 @@ struct ContentView: View {
             }
             .padding()
             .navigationBarTitle("Settings", displayMode: .inline)
+            .task {
+                guard BenchmarkAutomation.shouldRunOnLaunch(), !automationComplete else { return }
+                do {
+                    automationStatus = "Downloading model and running benchmark…"
+                    _ = try await BenchmarkAutomation.runFromLaunchEnvironment()
+                    automationStatus = "Benchmark complete."
+                    automationComplete = true
+                } catch {
+                    automationStatus = "Benchmark failed: \(error.localizedDescription)"
+                }
+            }
 
         }
     }

@@ -357,6 +357,89 @@ actor LlamaContext {
         return result;
     }
 
+    /// llama-bench compatible JSON array (pp + tg entries) for automation / Device Farm reporting.
+    func benchJSON(pp: Int, tg: Int, pl: Int, nr: Int = 1) -> String {
+        var ppAvgNs: Double = 0
+        var tgAvgNs: Double = 0
+
+        for _ in 0..<nr {
+            llama_batch_clear(&batch)
+
+            for i in 0..<pp {
+                llama_batch_add(&batch, 0, Int32(i), [0], false)
+            }
+            batch.logits[Int(batch.n_tokens) - 1] = 1
+
+            llama_memory_clear(llama_get_memory(context), false)
+
+            let tPpStart = DispatchTime.now().uptimeNanoseconds
+            if llama_decode(context, batch) != 0 {
+                print("llama_decode() failed during prompt")
+            }
+            llama_synchronize(context)
+            let tPpEnd = DispatchTime.now().uptimeNanoseconds
+
+            llama_memory_clear(llama_get_memory(context), false)
+
+            let tTgStart = DispatchTime.now().uptimeNanoseconds
+            for i in 0..<tg {
+                llama_batch_clear(&batch)
+                for j in 0..<pl {
+                    llama_batch_add(&batch, 0, Int32(i), [Int32(j)], true)
+                }
+                if llama_decode(context, batch) != 0 {
+                    print("llama_decode() failed during text generation")
+                }
+                llama_synchronize(context)
+            }
+            let tTgEnd = DispatchTime.now().uptimeNanoseconds
+
+            llama_memory_clear(llama_get_memory(context), false)
+
+            ppAvgNs += Double(tPpEnd - tPpStart) / Double(nr)
+            tgAvgNs += Double(tTgEnd - tTgStart) / Double(nr)
+        }
+
+        let nGpu = Int(runtimeOptions.nGpuLayers >= 0 ? runtimeOptions.nGpuLayers : 99)
+        let backend = nGpu == 0 ? "CPU" : "Metal"
+        let modelSize = Double(llama_model_size(model))
+        let ppTs = ppAvgNs > 0 ? Double(pp) / (ppAvgNs / 1e9) : 0
+        let tgTs = tgAvgNs > 0 ? Double(pl * tg) / (tgAvgNs / 1e9) : 0
+
+        let ppEntry: [String: Any] = [
+            "n_prompt": pp,
+            "n_gen": 0,
+            "n_batch": pl,
+            "n_threads": Int(llama_n_threads(context)),
+            "avg_ns": Int(ppAvgNs),
+            "stddev_ns": 0,
+            "avg_ts": ppTs,
+            "stddev_ts": 0,
+            "n_gpu_layers": nGpu,
+            "backend": backend,
+            "model_size": modelSize,
+        ]
+        let tgEntry: [String: Any] = [
+            "n_prompt": 0,
+            "n_gen": tg,
+            "n_batch": pl,
+            "n_threads": Int(llama_n_threads(context)),
+            "avg_ns": Int(tgAvgNs),
+            "stddev_ns": 0,
+            "avg_ts": tgTs,
+            "stddev_ts": 0,
+            "n_gpu_layers": nGpu,
+            "backend": backend,
+            "model_size": modelSize,
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: [ppEntry, tgEntry], options: []),
+              let json = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return json
+    }
+
     func clear() {
         tokens_list.removeAll()
         temporary_invalid_cchars.removeAll()
