@@ -585,103 +585,39 @@ class LlamaState: ObservableObject {
         "https://huggingface.co/\(tetherGgufModelsRepo)/resolve/main/\(path)"
     }
 
-    /// Curated GGUF models from https://huggingface.co/Benson-Chen/tether-gguf-models
+    private static func tetherModel(name: String, path: String, bytes: Int) -> Model {
+        let gib = String(format: "%.2f", Double(bytes) / 1024.0 / 1024.0 / 1024.0)
+        let filename = (path as NSString).lastPathComponent
+        return Model(
+            name: "\(name) (\(gib) GiB)",
+            url: tetherGgufModelURL(path: path),
+            filename: filename,
+            status: "download"
+        )
+    }
+
+    /// GGUF models from https://huggingface.co/Benson-Chen/tether-gguf-models
     private let defaultModels: [Model] = [
         // qwen3-0.6B
-        Model(
-            name: "Qwen3-0.6B (Q4_K_M, 0.37 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-0.6B/Qwen3-0.6B-Q4_K_M.gguf"),
-            filename: "Qwen3-0.6B-Q4_K_M.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Qwen3-0.6B (TQ2_0 Tether, 0.23 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-0.6B/Qwen3-0.6B-TQ2_0_Tether.gguf"),
-            filename: "Qwen3-0.6B-TQ2_0_Tether.gguf",
-            status: "download"
-        ),
+        LlamaState.tetherModel(name: "Qwen3-0.6B Q4_K_M", path: "qwen3-0.6B/Qwen3-0.6B-Q4_K_M.gguf", bytes: 396_705_472),
+        LlamaState.tetherModel(name: "Qwen3-0.6B TQ2_0 Tether", path: "qwen3-0.6B/Qwen3-0.6B-TQ2_0_Tether.gguf", bytes: 247_376_480),
         // qwen3-1.7B
-        Model(
-            name: "Qwen3-1.7B (TQ1_0, 0.52 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-1.7B/Qwen3-1.7B-TQ1_0.gguf"),
-            filename: "Qwen3-1.7B-TQ1_0.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Qwen3-1.7B (TQ2_0, 0.58 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-1.7B/Qwen3-1.7B-TQ2_0.gguf"),
-            filename: "Qwen3-1.7B-TQ2_0.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Qwen3-1.7B (Q2_K, 0.72 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-1.7B/Qwen3-1.7B-Q2_K.gguf"),
-            filename: "Qwen3-1.7B-Q2_K.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Qwen3-1.7B (Q3_K_M, 0.87 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-1.7B/Qwen3-1.7B-Q3_K_M.gguf"),
-            filename: "Qwen3-1.7B-Q3_K_M.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Qwen3-1.7B (Q4_0, 0.98 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-1.7B/Qwen3-1.7B-Q4_0.gguf"),
-            filename: "Qwen3-1.7B-Q4_0.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Qwen3-1.7B (Q4_K_M, 1.03 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-1.7B/Qwen3-1.7B-Q4_K_M.gguf"),
-            filename: "Qwen3-1.7B-Q4_K_M.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Qwen3-1.7B (BF16, 3.21 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "qwen3-1.7B/Qwen3-1.7B-BF16.gguf"),
-            filename: "Qwen3-1.7B-BF16.gguf",
-            status: "download"
-        ),
+        LlamaState.tetherModel(name: "Qwen3-1.7B TQ1_0", path: "qwen3-1.7B/Qwen3-1.7B-TQ1_0.gguf", bytes: 558_971_200),
+        LlamaState.tetherModel(name: "Qwen3-1.7B TQ2_0", path: "qwen3-1.7B/Qwen3-1.7B-TQ2_0.gguf", bytes: 625_031_488),
+        LlamaState.tetherModel(name: "Qwen3-1.7B Q2_K", path: "qwen3-1.7B/Qwen3-1.7B-Q2_K.gguf", bytes: 777_795_904),
+        LlamaState.tetherModel(name: "Qwen3-1.7B Q3_K_M", path: "qwen3-1.7B/Qwen3-1.7B-Q3_K_M.gguf", bytes: 939_538_752),
+        LlamaState.tetherModel(name: "Qwen3-1.7B Q4_0", path: "qwen3-1.7B/Qwen3-1.7B-Q4_0.gguf", bytes: 1_054_423_360),
+        LlamaState.tetherModel(name: "Qwen3-1.7B Q4_K_M", path: "qwen3-1.7B/Qwen3-1.7B-Q4_K_M.gguf", bytes: 1_107_409_216),
+        LlamaState.tetherModel(name: "Qwen3-1.7B BF16", path: "qwen3-1.7B/Qwen3-1.7B-BF16.gguf", bytes: 3_447_349_568),
         // bonsai-1.7B
-        Model(
-            name: "Bonsai-1.7B (Q1_0, 0.23 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "bonsai-1.7B/Bonsai-1.7B-Q1_0.gguf"),
-            filename: "Bonsai-1.7B-Q1_0.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Bonsai-1.7B (Q2_0, 0.43 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "bonsai-1.7B/Bonsai-1.7B-Q2_0.gguf"),
-            filename: "Bonsai-1.7B-Q2_0.gguf",
-            status: "download"
-        ),
+        LlamaState.tetherModel(name: "Bonsai-1.7B Q1_0", path: "bonsai-1.7B/Bonsai-1.7B-Q1_0.gguf", bytes: 248_302_272),
+        LlamaState.tetherModel(name: "Bonsai-1.7B Q2_0", path: "bonsai-1.7B/Bonsai-1.7B-Q2_0.gguf", bytes: 463_290_464),
         // bonsai-4B
-        Model(
-            name: "Bonsai-4B (Q1_0, 0.53 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "bonsai-4B/Bonsai-4B-Q1_0.gguf"),
-            filename: "Bonsai-4B-Q1_0.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Bonsai-4B (Q2_0, 1.0 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "bonsai-4B/Bonsai-4B-Q2_0.gguf"),
-            filename: "Bonsai-4B-Q2_0.gguf",
-            status: "download"
-        ),
+        LlamaState.tetherModel(name: "Bonsai-4B Q1_0", path: "bonsai-4B/Bonsai-4B-Q1_0.gguf", bytes: 572_270_624),
+        LlamaState.tetherModel(name: "Bonsai-4B Q2_0", path: "bonsai-4B/Bonsai-4B-Q2_0.gguf", bytes: 1_074_969_344),
         // bonsai-8B
-        Model(
-            name: "Bonsai-8B (Q1_0, 1.08 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "bonsai-8B/Bonsai-8B-Q1_0.gguf"),
-            filename: "Bonsai-8B-Q1_0.gguf",
-            status: "download"
-        ),
-        Model(
-            name: "Bonsai-8B (Q2_0, 2.0 GiB)",
-            url: LlamaState.tetherGgufModelURL(path: "bonsai-8B/Bonsai-8B-Q2_0.gguf"),
-            filename: "Bonsai-8B-Q2_0.gguf",
-            status: "download"
-        ),
+        LlamaState.tetherModel(name: "Bonsai-8B Q1_0", path: "bonsai-8B/Bonsai-8B-Q1_0.gguf", bytes: 1_158_654_496),
+        LlamaState.tetherModel(name: "Bonsai-8B Q2_0", path: "bonsai-8B/Bonsai-8B-Q2_0.gguf", bytes: 2_182_184_672),
     ]
     func loadModel(modelUrl: URL?) throws {
         guard let modelUrl else {
@@ -749,13 +685,36 @@ class LlamaState: ObservableObject {
         }
     }
 
-    func bench() async {
-        guard let llamaContext else {
+    func bench(cpuOnly: Bool = false) async {
+        guard let modelURL = currentModelURL else {
+            messageLog += "Load a model before running benchmark.\n"
+            return
+        }
+        if isFinetuning {
+            messageLog += "Finetuning in progress; wait for it to finish.\n"
             return
         }
 
-        messageLog += "\n"
-        messageLog += "Running benchmark...\n"
+        let savedOptions = runtimeOptions()
+        let benchNgl: Int32 = cpuOnly ? 0 : (optionNGpuLayers >= 0 ? Int32(optionNGpuLayers) : 99)
+        var benchOptions = savedOptions
+        benchOptions.nGpuLayers = benchNgl
+
+        let backendLabel = benchNgl == 0 ? "CPU (ngl=0)" : "Metal (ngl=\(benchNgl))"
+        messageLog += "\nRunning \(backendLabel) benchmark...\n"
+
+        if savedOptions.nGpuLayers != benchNgl || llamaContext == nil {
+            messageLog += "Loading model for benchmark (\(backendLabel))...\n"
+            do {
+                llamaContext = try LlamaContext.create_context(path: modelURL.path(), options: benchOptions)
+            } catch {
+                messageLog += "Failed to load model for benchmark: \(error.localizedDescription).\n"
+                return
+            }
+        }
+
+        guard let llamaContext else { return }
+
         messageLog += "Model info: "
         messageLog += await llamaContext.model_info() + "\n"
 
@@ -766,9 +725,11 @@ class LlamaState: ObservableObject {
         let t_heat = Double(t_end - t_start) / NS_PER_S
         messageLog += "Heat up time: \(t_heat) seconds, please wait...\n"
 
-        // if more than 5 seconds, then we're probably running on a slow device
         if t_heat > 5.0 {
             messageLog += "Heat up time is too long, aborting benchmark\n"
+            if savedOptions.nGpuLayers != benchNgl {
+                restoreModelContext(modelURL: modelURL, options: savedOptions)
+            }
             return
         }
 
@@ -776,6 +737,19 @@ class LlamaState: ObservableObject {
 
         messageLog += "\(result)"
         messageLog += "\n"
+
+        if savedOptions.nGpuLayers != benchNgl {
+            restoreModelContext(modelURL: modelURL, options: savedOptions)
+        }
+    }
+
+    private func restoreModelContext(modelURL: URL, options: LlamaRuntimeOptions) {
+        do {
+            llamaContext = try LlamaContext.create_context(path: modelURL.path(), options: options)
+            messageLog += "Restored model with ngl=\(options.nGpuLayers >= 0 ? options.nGpuLayers : -1).\n"
+        } catch {
+            messageLog += "Failed to restore model after benchmark: \(error.localizedDescription).\n"
+        }
     }
 
     func finetune() async {

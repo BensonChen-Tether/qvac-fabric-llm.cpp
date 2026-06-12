@@ -45,17 +45,12 @@ struct ContentView: View {
                         bench()
                     }
 
-                    Button(llamaState.isFinetuning ? "Finetuning..." : "Finetune") {
-                        finetune()
+                    Button("Bench CPU") {
+                        benchCpu()
                     }
-                    .disabled(llamaState.isFinetuning)
 
                     Button("Clear") {
                         clear()
-                    }
-
-                    Button("Copy") {
-                        UIPasteboard.general.string = llamaState.messageLog
                     }
                 }
                 .buttonStyle(.bordered)
@@ -93,13 +88,13 @@ struct ContentView: View {
 
     func bench() {
         Task {
-            await llamaState.bench()
+            await llamaState.bench(cpuOnly: false)
         }
     }
 
-    func finetune() {
+    func benchCpu() {
         Task {
-            await llamaState.finetune()
+            await llamaState.bench(cpuOnly: true)
         }
     }
 

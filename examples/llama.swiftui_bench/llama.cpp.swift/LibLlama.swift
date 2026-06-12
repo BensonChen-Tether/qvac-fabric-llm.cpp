@@ -341,7 +341,8 @@ actor LlamaContext {
         let model_desc     = model_info();
         let model_size     = String(format: "%.2f GiB", Double(llama_model_size(model)) / 1024.0 / 1024.0 / 1024.0);
         let model_n_params = String(format: "%.2f B", Double(llama_model_n_params(model)) / 1e9);
-        let backend        = "Metal";
+        let nGpu           = Int(runtimeOptions.nGpuLayers >= 0 ? runtimeOptions.nGpuLayers : 99)
+        let backend        = nGpu == 0 ? "CPU" : "Metal";
         let pp_avg_str     = String(format: "%.2f", pp_avg);
         let tg_avg_str     = String(format: "%.2f", tg_avg);
         let pp_std_str     = String(format: "%.2f", pp_std);
