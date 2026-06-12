@@ -1,0 +1,587 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		549479CB2AC9E16000E0F78B /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 549479CA2AC9E16000E0F78B /* Metal.framework */; };
+		8A1C83772AC328BD0096AF73 /* llama_swiftuiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1C83762AC328BD0096AF73 /* llama_swiftuiApp.swift */; };
+		8A1C83792AC328BD0096AF73 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1C83782AC328BD0096AF73 /* ContentView.swift */; };
+		8A1C837B2AC328BE0096AF73 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8A1C837A2AC328BE0096AF73 /* Assets.xcassets */; };
+		8A39BE0A2AC7601100BFEB40 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8A39BE092AC7601000BFEB40 /* Accelerate.framework */; };
+		8A3F84242AC4C891005E2EE8 /* models in Resources */ = {isa = PBXBuildFile; fileRef = 8A3F84232AC4C891005E2EE8 /* models */; };
+		8A907F332AC7138A006146EA /* LibLlama.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A907F322AC7134E006146EA /* LibLlama.swift */; };
+		8A9F7C4D2AC332EE008AE1EA /* LlamaState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A9F7C4C2AC332EE008AE1EA /* LlamaState.swift */; };
+		DD84C9FD2D747FED007778EC /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DD84C9FC2D747FED007778EC /* llama.xcframework */; };
+		DD84C9FE2D747FED007778EC /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DD84C9FC2D747FED007778EC /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D1A2F0012E0C8E8B00A1B1C0 /* FinetuneBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = D1A2F0002E0C8E8B00A1B1C0 /* FinetuneBridge.mm */; };
+		E1A100022AC328BD0096AF73 /* BenchmarkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100012AC328BD0096AF73 /* BenchmarkUITests.swift */; };
+		E1A100082AC328BD0096AF73 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1A100072AC328BD0096AF73 /* XCTest.framework */; };
+		E1A100102AC328BD0096AF73 /* BenchmarkAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */; };
+		E1A100122AC328BD0096AF73 /* BenchmarkConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100132AC328BD0096AF73 /* BenchmarkConfig.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		DD84C9FF2D747FED007778EC /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				DD84C9FE2D747FED007778EC /* llama.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		549479CA2AC9E16000E0F78B /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		8A1C83732AC328BD0096AF73 /* llama.swiftui_bench.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = llama.swiftui_bench.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8A1C83762AC328BD0096AF73 /* llama_swiftuiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = llama_swiftuiApp.swift; sourceTree = "<group>"; };
+		8A1C83782AC328BD0096AF73 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		8A1C837A2AC328BE0096AF73 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8A39BE092AC7601000BFEB40 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		8A3F84232AC4C891005E2EE8 /* models */ = {isa = PBXFileReference; lastKnownFileType = folder; name = models; path = llama.swiftui_bench/Resources/models; sourceTree = "<group>"; };
+		8A907F322AC7134E006146EA /* LibLlama.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibLlama.swift; sourceTree = "<group>"; };
+		8A9F7C4C2AC332EE008AE1EA /* LlamaState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaState.swift; sourceTree = "<group>"; };
+		DD84C9FC2D747FED007778EC /* llama.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = "../../build-apple/llama.xcframework"; sourceTree = "<group>"; };
+		D1A2F0002E0C8E8B00A1B1C0 /* FinetuneBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FinetuneBridge.mm; sourceTree = "<group>"; };
+		D1A2F0022E0C8E8B00A1B1C0 /* FinetuneBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FinetuneBridge.h; sourceTree = "<group>"; };
+		D1A2F0032E0C8E8B00A1B1C0 /* llama_swiftui-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llama_swiftui-Bridging-Header.h"; sourceTree = "<group>"; };
+		E1A100012AC328BD0096AF73 /* BenchmarkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkUITests.swift; sourceTree = "<group>"; };
+		E1A100032AC328BD0096AF73 /* llama.swiftui_benchUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = llama.swiftui_benchUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1A100072AC328BD0096AF73 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkAutomation.swift; sourceTree = "<group>"; };
+		E1A100132AC328BD0096AF73 /* BenchmarkConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkConfig.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8A1C83702AC328BD0096AF73 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				549479CB2AC9E16000E0F78B /* Metal.framework in Frameworks */,
+				8A39BE0A2AC7601100BFEB40 /* Accelerate.framework in Frameworks */,
+				DD84C9FD2D747FED007778EC /* llama.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		E1A100092AC328BD0096AF73 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8A1C836B2AC328BD0096AF73 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8A1C83722AC328BD0096AF73;
+			remoteInfo = llama.swiftui_bench;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E1A100062AC328BD0096AF73 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E1A100082AC328BD0096AF73 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		8A1C836A2AC328BD0096AF73 = {
+			isa = PBXGroup;
+			children = (
+				8A907F312AC7134E006146EA /* llama.cpp.swift */,
+				8A1C83752AC328BD0096AF73 /* llama.swiftui_bench */,
+				E1A1000B2AC328BD0096AF73 /* llama.swiftui_benchUITests */,
+				8A1C83742AC328BD0096AF73 /* Products */,
+				8A39BE082AC7601000BFEB40 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		8A1C83742AC328BD0096AF73 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8A1C83732AC328BD0096AF73 /* llama.swiftui_bench.app */,
+				E1A100032AC328BD0096AF73 /* llama.swiftui_benchUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8A1C83752AC328BD0096AF73 /* llama.swiftui_bench */ = {
+			isa = PBXGroup;
+			children = (
+				8A3F84102AC4BD85005E2EE8 /* Resources */,
+				8A9F7C4B2AC332DC008AE1EA /* Models */,
+				8A9F7C4A2AC332BF008AE1EA /* UI */,
+				D1A2F0062E0C8E8B00A1B1C0 /* Bridging */,
+				8A1C83762AC328BD0096AF73 /* llama_swiftuiApp.swift */,
+				8A1C837A2AC328BE0096AF73 /* Assets.xcassets */,
+			);
+			path = llama.swiftui_bench;
+			sourceTree = "<group>";
+		};
+		8A39BE082AC7601000BFEB40 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DD84C9FC2D747FED007778EC /* llama.xcframework */,
+				549479CA2AC9E16000E0F78B /* Metal.framework */,
+				8A39BE092AC7601000BFEB40 /* Accelerate.framework */,
+				E1A100072AC328BD0096AF73 /* XCTest.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		8A3F84112AC4BD8C005E2EE8 /* models */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = models;
+			sourceTree = "<group>";
+		};
+		8A3F84102AC4BD85005E2EE8 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8A3F84112AC4BD8C005E2EE8 /* models */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		8A907F312AC7134E006146EA /* llama.cpp.swift */ = {
+			isa = PBXGroup;
+			children = (
+				8A907F322AC7134E006146EA /* LibLlama.swift */,
+			);
+			path = llama.cpp.swift;
+			sourceTree = "<group>";
+		};
+		D1A2F0062E0C8E8B00A1B1C0 /* Bridging */ = {
+			isa = PBXGroup;
+			children = (
+				D1A2F0022E0C8E8B00A1B1C0 /* FinetuneBridge.h */,
+				D1A2F0032E0C8E8B00A1B1C0 /* llama_swiftui-Bridging-Header.h */,
+				D1A2F0002E0C8E8B00A1B1C0 /* FinetuneBridge.mm */,
+			);
+			path = Bridging;
+			sourceTree = "<group>";
+		};
+		8A9F7C4A2AC332BF008AE1EA /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				8A1C83782AC328BD0096AF73 /* ContentView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		8A9F7C4B2AC332DC008AE1EA /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				8A9F7C4C2AC332EE008AE1EA /* LlamaState.swift */,
+				E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */,
+				E1A100132AC328BD0096AF73 /* BenchmarkConfig.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		E1A1000B2AC328BD0096AF73 /* llama.swiftui_benchUITests */ = {
+			isa = PBXGroup;
+			children = (
+				E1A100012AC328BD0096AF73 /* BenchmarkUITests.swift */,
+			);
+			path = llama.swiftui_benchUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8A1C83722AC328BD0096AF73 /* llama.swiftui_bench */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8A1C83812AC328BE0096AF73 /* Build configuration list for PBXNativeTarget "llama.swiftui_bench" */;
+			buildPhases = (
+				8A1C836F2AC328BD0096AF73 /* Sources */,
+				8A1C83702AC328BD0096AF73 /* Frameworks */,
+				8A1C83712AC328BD0096AF73 /* Resources */,
+				DD84C9FF2D747FED007778EC /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = llama.swiftui_bench;
+			packageProductDependencies = (
+			);
+			productName = llama.swiftui_bench;
+			productReference = 8A1C83732AC328BD0096AF73 /* llama.swiftui_bench.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E1A100042AC328BD0096AF73 /* llama.swiftui_benchUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1A1000C2AC328BD0096AF73 /* Build configuration list for PBXNativeTarget "llama.swiftui_benchUITests" */;
+			buildPhases = (
+				E1A100052AC328BD0096AF73 /* Sources */,
+				E1A100062AC328BD0096AF73 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E1A1000A2AC328BD0096AF73 /* PBXTargetDependency */,
+			);
+			name = llama.swiftui_benchUITests;
+			productName = llama.swiftui_benchUITests;
+			productReference = E1A100032AC328BD0096AF73 /* llama.swiftui_benchUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8A1C836B2AC328BD0096AF73 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					8A1C83722AC328BD0096AF73 = {
+						CreatedOnToolsVersion = 15.0;
+						LastSwiftMigration = 1500;
+					};
+					E1A100042AC328BD0096AF73 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = 8A1C83722AC328BD0096AF73;
+					};
+				};
+			};
+			buildConfigurationList = 8A1C836E2AC328BD0096AF73 /* Build configuration list for PBXProject "llama.swiftui_bench" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 8A1C836A2AC328BD0096AF73;
+			packageReferences = (
+			);
+			productRefGroup = 8A1C83742AC328BD0096AF73 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8A1C83722AC328BD0096AF73 /* llama.swiftui_bench */,
+				E1A100042AC328BD0096AF73 /* llama.swiftui_benchUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8A1C83712AC328BD0096AF73 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8A3F84242AC4C891005E2EE8 /* models in Resources */,
+				8A1C837B2AC328BE0096AF73 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8A1C836F2AC328BD0096AF73 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8A907F332AC7138A006146EA /* LibLlama.swift in Sources */,
+				8A9F7C4D2AC332EE008AE1EA /* LlamaState.swift in Sources */,
+				E1A100102AC328BD0096AF73 /* BenchmarkAutomation.swift in Sources */,
+				E1A100122AC328BD0096AF73 /* BenchmarkConfig.swift in Sources */,
+				D1A2F0012E0C8E8B00A1B1C0 /* FinetuneBridge.mm in Sources */,
+				8A1C83792AC328BD0096AF73 /* ContentView.swift in Sources */,
+				8A1C83772AC328BD0096AF73 /* llama_swiftuiApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E1A100052AC328BD0096AF73 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E1A100022AC328BD0096AF73 /* BenchmarkUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E1A1000A2AC328BD0096AF73 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8A1C83722AC328BD0096AF73 /* llama.swiftui_bench */;
+			targetProxy = E1A100092AC328BD0096AF73 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		8A1C837F2AC328BE0096AF73 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		8A1C83802AC328BE0096AF73 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8A1C83822AC328BE0096AF73 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3LT8Z8ZRCG;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "llama-collabora-bench";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator xros xrsimulator";
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				SWIFT_OBJC_BRIDGING_HEADER = "llama.swiftui_bench/Bridging/llama_swiftui-Bridging-Header.h";
+			};
+			name = Debug;
+		};
+		8A1C83832AC328BE0096AF73 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3LT8Z8ZRCG;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "llama-collabora-bench";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator xros xrsimulator";
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				SWIFT_OBJC_BRIDGING_HEADER = "llama.swiftui_bench/Bridging/llama_swiftui-Bridging-Header.h";
+			};
+			name = Release;
+		};
+		E1A1000D2AC328BD0096AF73 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3LT8Z8ZRCG;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "llama-collabora-benchUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = llama.swiftui_bench;
+			};
+			name = Debug;
+		};
+		E1A1000E2AC328BD0096AF73 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3LT8Z8ZRCG;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "llama-collabora-benchUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = llama.swiftui_bench;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8A1C836E2AC328BD0096AF73 /* Build configuration list for PBXProject "llama.swiftui_bench" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8A1C837F2AC328BE0096AF73 /* Debug */,
+				8A1C83802AC328BE0096AF73 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8A1C83812AC328BE0096AF73 /* Build configuration list for PBXNativeTarget "llama.swiftui_bench" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8A1C83822AC328BE0096AF73 /* Debug */,
+				8A1C83832AC328BE0096AF73 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E1A1000C2AC328BD0096AF73 /* Build configuration list for PBXNativeTarget "llama.swiftui_benchUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E1A1000D2AC328BD0096AF73 /* Debug */,
+				E1A1000E2AC328BD0096AF73 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8A1C836B2AC328BD0096AF73 /* Project object */;
+}

@@ -1,0 +1,8 @@
+qwen3-0.6B/Qwen3-0.6B-TQ2_0_Tether.gguf
+qwen3-1.7B/Qwen3-1.7B-TQ2_0.gguf
+bonsai-1.7B/Bonsai-1.7B-Q1_0.gguf
+bonsai-1.7B/Bonsai-1.7B-Q2_0.gguf
+bonsai-4B/Bonsai-4B-Q1_0.gguf
+bonsai-4B/Bonsai-4B-Q2_0.gguf
+bonsai-8B/Bonsai-8B-Q1_0.gguf
+bonsai-8B/Bonsai-8B-Q2_0.gguf

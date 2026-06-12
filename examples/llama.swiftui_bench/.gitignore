@@ -1,0 +1,54 @@
+# macOS / Xcode user state
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.moved-aside
+*.hmap
+
+# Xcode build products and archives
+DerivedData/
+build/
+*.xcarchive
+*.ipa
+*.app
+*.xctest
+*.dSYM
+*.dSYM.zip
+
+# Xcode intermediate caches (also under build/, listed explicitly for in-tree builds)
+**/Intermediates.noindex/
+**/ModuleCache.noindex/
+**/SDKStatCaches.noindex/
+xcodebuild.log
+
+# Prebuilt llama.cpp (built at repo root via build-xcframework.sh)
+*.xcframework/
+*.framework/
+*.a
+*.dylib
+
+# Model weights and related binaries (download at runtime or place locally)
+*.gguf
+*.gguf.json
+*.ggml
+*.bin
+
+# Finetune / dataset payloads users may add locally
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# Device Farm: local config, run outputs, and packaged test bundles
+devicefarm/config.env
+devicefarm/devicefarm_results/
+devicefarm/**/*.zip
+devicefarm/**/*.xlsx
+
+# Python (devicefarm scripts)
+__pycache__/
+*.pyc
+.venv/
+
+# Stale project name from upstream llama.swiftui sample
+llama.swiftui.xcodeproj/
