@@ -24,6 +24,29 @@ object BenchmarkAutomation {
         val metaFile: File,
     )
 
+    suspend fun runMatrix(
+        context: Context,
+        modelPathsInRepo: List<String>,
+        nGpuLayersList: List<Int>,
+        repetitions: Int = BenchConfig.AUTOMATION_REPETITIONS,
+        skipDownloadIfCached: Boolean = true,
+    ): List<RunResult> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<RunResult>()
+        for (modelPath in modelPathsInRepo) {
+            for (nGpuLayers in nGpuLayersList) {
+                Log.i(TAG, "Matrix run: model=$modelPath n_gpu_layers=$nGpuLayers")
+                results += run(
+                    context = context,
+                    modelPathInRepo = modelPath,
+                    repetitions = repetitions,
+                    nGpuLayers = nGpuLayers,
+                    skipDownloadIfCached = skipDownloadIfCached,
+                )
+            }
+        }
+        results
+    }
+
     suspend fun run(
         context: Context,
         modelPathInRepo: String,

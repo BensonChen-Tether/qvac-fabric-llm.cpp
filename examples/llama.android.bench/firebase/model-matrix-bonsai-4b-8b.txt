@@ -1,0 +1,5 @@
+# Bonsai 4B / 8B × Q1_0 / Q2_0 (skip 1.7B — already benchmarked)
+bonsai-4B/Bonsai-4B-Q1_0.gguf
+bonsai-4B/Bonsai-4B-Q2_0.gguf
+bonsai-8B/Bonsai-8B-Q1_0.gguf
+bonsai-8B/Bonsai-8B-Q2_0.gguf

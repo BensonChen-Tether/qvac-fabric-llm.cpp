@@ -1,8 +1,15 @@
 import Foundation
 import llama
 
-enum LlamaError: Error {
-    case couldNotInitializeContext
+enum LlamaError: Error, LocalizedError {
+    case couldNotInitializeContext(reason: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .couldNotInitializeContext(let reason):
+            return reason
+        }
+    }
 }
 
 struct LlamaRuntimeOptions {
@@ -39,6 +46,7 @@ actor LlamaContext {
     private var batch: llama_batch
     private var tokens_list: [llama_token]
     private var runtimeOptions: LlamaRuntimeOptions
+    private let backend: LlamaModelBackend
     var is_done: Bool = false
 
     /// This variable is used to store temporarily invalid cchars
@@ -49,103 +57,218 @@ actor LlamaContext {
 
     var n_decode: Int32 = 0
 
-    init(model: OpaquePointer, context: OpaquePointer, options: LlamaRuntimeOptions) {
+    init(model: OpaquePointer, context: OpaquePointer, options: LlamaRuntimeOptions, backend: LlamaModelBackend) {
         self.model = model
         self.context = context
+        self.backend = backend
         self.tokens_list = []
-    self.batch = llama_batch_init(max(Int32(512), options.contextLength), 0, 1)
+        self.batch = RuntimeLlama.batchInit(max(Int32(512), options.contextLength), 0, 1)
         self.temporary_invalid_cchars = []
         self.runtimeOptions = options
         self.n_len = options.contextLength
-        vocab = llama_model_get_vocab(model)
+        vocab = RuntimeLlama.modelGetVocab(model)!
 
-        let chainParams = llama_sampler_chain_default_params()
-        let initialChain = llama_sampler_chain_init(chainParams)
+        let chainParams = RuntimeLlama.samplerChainDefaultParams()
+        let initialChain = RuntimeLlama.samplerChainInit(chainParams)
 
         if options.topK > 0 {
-            llama_sampler_chain_add(initialChain, llama_sampler_init_top_k(options.topK))
+            RuntimeLlama.samplerChainAdd(initialChain, RuntimeLlama.samplerInitTopK(options.topK))
         }
 
         let clampedTopP = max(0.0, min(Double(options.topP), 1.0))
-        llama_sampler_chain_add(initialChain, llama_sampler_init_top_p(Float(clampedTopP), 1))
+        RuntimeLlama.samplerChainAdd(initialChain, RuntimeLlama.samplerInitTopP(Float(clampedTopP), 1))
 
-    let clampedTemp = max(0.0, Double(options.temperature))
-        llama_sampler_chain_add(initialChain, llama_sampler_init_temp(Float(clampedTemp)))
+        let clampedTemp = max(0.0, Double(options.temperature))
+        RuntimeLlama.samplerChainAdd(initialChain, RuntimeLlama.samplerInitTemp(Float(clampedTemp)))
 
         let seed = options.seed == 0 ? UInt32.max : options.seed
-        llama_sampler_chain_add(initialChain, llama_sampler_init_dist(seed))
+        RuntimeLlama.samplerChainAdd(initialChain, RuntimeLlama.samplerInitDist(seed))
 
         sampling = initialChain
     }
 
     deinit {
         if let sampling {
-            llama_sampler_free(sampling)
+            RuntimeLlama.samplerFree(sampling)
         }
-        llama_batch_free(batch)
-        llama_model_free(model)
-        llama_free(context)
-        llama_backend_free()
+        RuntimeLlama.batchFree(batch)
+        RuntimeLlama.modelFree(model, backend: backend)
+        RuntimeLlama.free(context, backend: backend)
+        RuntimeLlama.backendFree(for: backend)
     }
 
     private func rebuildSamplerChain() {
-        let chainParams = llama_sampler_chain_default_params()
-        let newChain = llama_sampler_chain_init(chainParams)
+        let chainParams = RuntimeLlama.samplerChainDefaultParams()
+        let newChain = RuntimeLlama.samplerChainInit(chainParams)
 
         if runtimeOptions.topK > 0 {
-            llama_sampler_chain_add(newChain, llama_sampler_init_top_k(runtimeOptions.topK))
+            RuntimeLlama.samplerChainAdd(newChain, RuntimeLlama.samplerInitTopK(runtimeOptions.topK))
         }
 
         let clampedTopP = max(0.0, min(runtimeOptions.topP, 1.0))
-        llama_sampler_chain_add(newChain, llama_sampler_init_top_p(clampedTopP, 1))
+        RuntimeLlama.samplerChainAdd(newChain, RuntimeLlama.samplerInitTopP(clampedTopP, 1))
 
-    let clampedTemp = max(0.0, Double(runtimeOptions.temperature))
-        llama_sampler_chain_add(newChain, llama_sampler_init_temp(Float(clampedTemp)))
+        let clampedTemp = max(0.0, Double(runtimeOptions.temperature))
+        RuntimeLlama.samplerChainAdd(newChain, RuntimeLlama.samplerInitTemp(Float(clampedTemp)))
 
         let seed = runtimeOptions.seed == 0 ? UInt32.max : runtimeOptions.seed
-        llama_sampler_chain_add(newChain, llama_sampler_init_dist(seed))
+        RuntimeLlama.samplerChainAdd(newChain, RuntimeLlama.samplerInitDist(seed))
 
         if let sampling {
-            llama_sampler_free(sampling)
+            RuntimeLlama.samplerFree(sampling)
         }
 
         sampling = newChain
     }
 
+    private static func validateModelFile(path: String) throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            throw LlamaError.couldNotInitializeContext(reason: "Model file not found at \(path)")
+        }
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: path)
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        guard size > 32 else {
+            throw LlamaError.couldNotInitializeContext(reason: "Model file at \(path) is empty or truncated")
+        }
+
+        let handle = FileHandle(forReadingAtPath: path)
+        defer { try? handle?.close() }
+        guard let data = try handle?.read(upToCount: 4), data == Data("GGUF".utf8) else {
+            throw LlamaError.couldNotInitializeContext(reason: "Model file at \(path) is not a valid GGUF archive")
+        }
+
+        if LlamaModelBackend.forModel(path: path) == .prism {
+            try validateBonsaiArchitecture(path: path)
+        }
+    }
+
+    private static func validateBonsaiArchitecture(path: String) throws {
+        let handle = FileHandle(forReadingAtPath: path)
+        defer { try? handle?.close() }
+        guard let chunk = try handle?.read(upToCount: 4_000_000), !chunk.isEmpty else {
+            return
+        }
+
+        guard let text = String(data: chunk, encoding: .utf8) else {
+            return
+        }
+
+        guard text.contains("general.architecture") else {
+            return
+        }
+
+        if text.contains("qwen3") {
+            return
+        }
+
+        if text.contains("clip") {
+            throw LlamaError.couldNotInitializeContext(
+                reason: "Downloaded file looks like a CLIP/mmproj model, not a Bonsai qwen3 model. Delete it and re-download."
+            )
+        }
+
+        throw LlamaError.couldNotInitializeContext(
+            reason: "Bonsai models must use general.architecture=qwen3. This file appears to use a different architecture."
+        )
+    }
+
+    private static func summarizeLoadLog(_ text: String) -> String {
+        let lines = text
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if lines.isEmpty {
+            return ""
+        }
+        let interesting = lines.filter {
+            $0.localizedCaseInsensitiveContains("error")
+                || $0.localizedCaseInsensitiveContains("failed")
+                || $0.localizedCaseInsensitiveContains("invalid")
+                || $0.localizedCaseInsensitiveContains("no backends")
+        }
+        let chosen = interesting.isEmpty ? Array(lines.suffix(3)) : Array(interesting.suffix(3))
+        return chosen.joined(separator: " ")
+    }
+
     static func create_context(path: String, options: LlamaRuntimeOptions) throws -> LlamaContext {
-        llama_backend_init()
-        var model_params = llama_model_default_params()
+        try validateModelFile(path: path)
+        try RuntimeLlama.prepare(for: path)
+
+        let backend = LlamaModelBackend.forModel(path: path)
+        print("Using \(backend == .prism ? "prism-llama.cpp" : "qvac-fabric-llm.cpp") backend")
+        if backend == .prism {
+            print("prism backend_reg_count=\(RuntimeLlama.prismBackendRegCount())")
+        }
+
+        RuntimeLlama.backendInit()
 
 #if targetEnvironment(simulator)
-        model_params.n_gpu_layers = 0
+        let defaultNgl: Int32 = 0
         print("Running on simulator, force use n_gpu_layers = 0")
 #else
-        if options.nGpuLayers >= 0 {
-            model_params.n_gpu_layers = options.nGpuLayers
-        }
+        let defaultNgl: Int32 = options.nGpuLayers >= 0 ? options.nGpuLayers : -1
 #endif
-        let model = llama_model_load_from_file(path, model_params)
+
+        var loadAttempts: [(label: String, nGpuLayers: Int32, useMmap: Bool)] = [
+            ("default", defaultNgl, true)
+        ]
+
+        if backend == .prism {
+            loadAttempts.append(("cpu", 0, true))
+            loadAttempts.append(("no-mmap", defaultNgl, false))
+            loadAttempts.append(("cpu-no-mmap", 0, false))
+        }
+
+        var model: OpaquePointer?
+        var lastDetail = ""
+        for attempt in loadAttempts {
+            if let loaded = RuntimeLlama.modelLoadWithOptions(
+                path,
+                nGpuLayers: attempt.nGpuLayers,
+                useMmap: attempt.useMmap,
+                backend: backend
+            ) {
+                model = loaded
+                if attempt.label != "default" {
+                    print("Loaded Bonsai model using \(attempt.label) fallback")
+                }
+                break
+            }
+            lastDetail = RuntimeLlama.lastModelLoadDetail(for: backend)
+            if lastDetail.isEmpty {
+                lastDetail = "Model load failed using \(attempt.label) settings"
+            }
+        }
+
         guard let model else {
             print("Could not load model at \(path)")
-            throw LlamaError.couldNotInitializeContext
+            let backendName = backend == .prism ? "prism-llama.cpp" : "qvac-fabric-llm.cpp"
+            let summary = summarizeLoadLog(lastDetail)
+            let reason = summary.isEmpty
+                ? "Model load failed using \(backendName) at \(path)"
+                : "Model load failed using \(backendName): \(summary)"
+            throw LlamaError.couldNotInitializeContext(reason: reason)
         }
 
         let n_threads = max(1, min(8, ProcessInfo.processInfo.processorCount - 2))
         print("Using \(n_threads) threads")
 
-        var ctx_params = llama_context_default_params()
-        ctx_params.n_ctx = UInt32(options.contextLength)
-        ctx_params.n_threads       = Int32(n_threads)
-        ctx_params.n_threads_batch = Int32(n_threads)
-        ctx_params.flash_attn_type = options.flashAttention ? LLAMA_FLASH_ATTN_TYPE_ENABLED : LLAMA_FLASH_ATTN_TYPE_DISABLED
-
-        let context = llama_init_from_model(model, ctx_params)
+        let context = RuntimeLlama.initFromModel(
+            model,
+            nCtx: UInt32(options.contextLength),
+            nThreads: Int32(n_threads),
+            flashAttention: options.flashAttention,
+            backend: backend
+        )
         guard let context else {
+            RuntimeLlama.modelFree(model, backend: backend)
             print("Could not load context!")
-            throw LlamaError.couldNotInitializeContext
+            throw LlamaError.couldNotInitializeContext(reason: "Failed to create llama context")
         }
 
-        return LlamaContext(model: model, context: context, options: options)
+        return LlamaContext(model: model, context: context, options: options, backend: backend)
     }
 
     func updateSampler(options: LlamaRuntimeOptions) {
@@ -161,9 +284,7 @@ actor LlamaContext {
             result.deallocate()
         }
 
-        // TODO: this is probably very stupid way to get the string from C
-
-        let nChars = llama_model_desc(model, result, 256)
+        let nChars = RuntimeLlama.modelDesc(model, result, 256)
         let bufferPointer = UnsafeBufferPointer(start: result, count: Int(nChars))
 
         var SwiftString = ""
@@ -184,7 +305,7 @@ actor LlamaContext {
         tokens_list = tokenize(text: text, add_bos: true)
         temporary_invalid_cchars = []
 
-        let n_ctx = llama_n_ctx(context)
+        let n_ctx = RuntimeLlama.nCtx(context)
         let n_kv_req = tokens_list.count + (Int(n_len) - tokens_list.count)
 
         print("\n n_len = \(n_len), n_ctx = \(n_ctx), n_kv_req = \(n_kv_req)")
@@ -205,7 +326,7 @@ actor LlamaContext {
         }
         batch.logits[Int(batch.n_tokens) - 1] = 1 // true
 
-        if llama_decode(context, batch) != 0 {
+        if RuntimeLlama.decode(context, batch) != 0 {
             print("llama_decode() failed")
         }
 
@@ -219,9 +340,9 @@ actor LlamaContext {
             return ""
         }
 
-        new_token_id = llama_sampler_sample(sampling, context, batch.n_tokens - 1)
+        new_token_id = RuntimeLlama.samplerSample(sampling, context, batch.n_tokens - 1)
 
-        if llama_vocab_is_eog(vocab, new_token_id) || n_cur == n_len {
+        if RuntimeLlama.vocabIsEog(vocab, new_token_id) || n_cur == n_len {
             print("\n")
             is_done = true
             let new_token_str = String(cString: temporary_invalid_cchars + [0])
@@ -236,7 +357,6 @@ actor LlamaContext {
             temporary_invalid_cchars.removeAll()
             new_token_str = string
         } else if (0 ..< temporary_invalid_cchars.count).contains(where: {$0 != 0 && String(validatingUTF8: Array(temporary_invalid_cchars.suffix($0)) + [0]) != nil}) {
-            // in this case, at least the suffix of the temporary_invalid_cchars can be interpreted as UTF8 string
             let string = String(cString: temporary_invalid_cchars + [0])
             temporary_invalid_cchars.removeAll()
             new_token_str = string
@@ -244,7 +364,6 @@ actor LlamaContext {
             new_token_str = ""
         }
         print(new_token_str)
-        // tokens_list.append(new_token_id)
 
         llama_batch_clear(&batch)
         llama_batch_add(&batch, new_token_id, n_cur, [0], true)
@@ -252,7 +371,7 @@ actor LlamaContext {
         n_decode += 1
         n_cur    += 1
 
-        if llama_decode(context, batch) != 0 {
+        if RuntimeLlama.decode(context, batch) != 0 {
             print("failed to evaluate llama!")
         }
 
@@ -267,8 +386,6 @@ actor LlamaContext {
         var tg_std: Double = 0
 
         for _ in 0..<nr {
-            // bench prompt processing
-
             llama_batch_clear(&batch)
 
             let n_tokens = pp
@@ -278,20 +395,18 @@ actor LlamaContext {
             }
             batch.logits[Int(batch.n_tokens) - 1] = 1 // true
 
-            llama_memory_clear(llama_get_memory(context), false)
+            RuntimeLlama.memoryClear(RuntimeLlama.getMemory(context), false)
 
             let t_pp_start = DispatchTime.now().uptimeNanoseconds / 1000;
 
-            if llama_decode(context, batch) != 0 {
+            if RuntimeLlama.decode(context, batch) != 0 {
                 print("llama_decode() failed during prompt")
             }
-            llama_synchronize(context)
+            RuntimeLlama.synchronize(context)
 
             let t_pp_end = DispatchTime.now().uptimeNanoseconds / 1000;
 
-            // bench text generation
-
-            llama_memory_clear(llama_get_memory(context), false)
+            RuntimeLlama.memoryClear(RuntimeLlama.getMemory(context), false)
 
             let t_tg_start = DispatchTime.now().uptimeNanoseconds / 1000;
 
@@ -302,15 +417,15 @@ actor LlamaContext {
                     llama_batch_add(&batch, 0, Int32(i), [Int32(j)], true)
                 }
 
-                if llama_decode(context, batch) != 0 {
+                if RuntimeLlama.decode(context, batch) != 0 {
                     print("llama_decode() failed during text generation")
                 }
-                llama_synchronize(context)
+                RuntimeLlama.synchronize(context)
             }
 
             let t_tg_end = DispatchTime.now().uptimeNanoseconds / 1000;
 
-            llama_memory_clear(llama_get_memory(context), false)
+            RuntimeLlama.memoryClear(RuntimeLlama.getMemory(context), false)
 
             let t_pp = Double(t_pp_end - t_pp_start) / 1000000.0
             let t_tg = Double(t_tg_end - t_tg_start) / 1000000.0
@@ -339,8 +454,8 @@ actor LlamaContext {
         }
 
         let model_desc     = model_info();
-        let model_size     = String(format: "%.2f GiB", Double(llama_model_size(model)) / 1024.0 / 1024.0 / 1024.0);
-        let model_n_params = String(format: "%.2f B", Double(llama_model_n_params(model)) / 1e9);
+        let model_size     = String(format: "%.2f GiB", Double(RuntimeLlama.modelSize(model)) / 1024.0 / 1024.0 / 1024.0);
+        let model_n_params = String(format: "%.2f B", Double(RuntimeLlama.modelNParams(model)) / 1e9);
         let nGpu           = Int(runtimeOptions.nGpuLayers >= 0 ? runtimeOptions.nGpuLayers : 99)
         let backend        = nGpu == 0 ? "CPU" : "Metal";
         let pp_avg_str     = String(format: "%.2f", pp_avg);
@@ -371,16 +486,16 @@ actor LlamaContext {
             }
             batch.logits[Int(batch.n_tokens) - 1] = 1
 
-            llama_memory_clear(llama_get_memory(context), false)
+            RuntimeLlama.memoryClear(RuntimeLlama.getMemory(context), false)
 
             let tPpStart = DispatchTime.now().uptimeNanoseconds
-            if llama_decode(context, batch) != 0 {
+            if RuntimeLlama.decode(context, batch) != 0 {
                 print("llama_decode() failed during prompt")
             }
-            llama_synchronize(context)
+            RuntimeLlama.synchronize(context)
             let tPpEnd = DispatchTime.now().uptimeNanoseconds
 
-            llama_memory_clear(llama_get_memory(context), false)
+            RuntimeLlama.memoryClear(RuntimeLlama.getMemory(context), false)
 
             let tTgStart = DispatchTime.now().uptimeNanoseconds
             for i in 0..<tg {
@@ -388,14 +503,14 @@ actor LlamaContext {
                 for j in 0..<pl {
                     llama_batch_add(&batch, 0, Int32(i), [Int32(j)], true)
                 }
-                if llama_decode(context, batch) != 0 {
+                if RuntimeLlama.decode(context, batch) != 0 {
                     print("llama_decode() failed during text generation")
                 }
-                llama_synchronize(context)
+                RuntimeLlama.synchronize(context)
             }
             let tTgEnd = DispatchTime.now().uptimeNanoseconds
 
-            llama_memory_clear(llama_get_memory(context), false)
+            RuntimeLlama.memoryClear(RuntimeLlama.getMemory(context), false)
 
             ppAvgNs += Double(tPpEnd - tPpStart) / Double(nr)
             tgAvgNs += Double(tTgEnd - tTgStart) / Double(nr)
@@ -403,7 +518,7 @@ actor LlamaContext {
 
         let nGpu = Int(runtimeOptions.nGpuLayers >= 0 ? runtimeOptions.nGpuLayers : 99)
         let backend = nGpu == 0 ? "CPU" : "Metal"
-        let modelSize = Double(llama_model_size(model))
+        let modelSize = Double(RuntimeLlama.modelSize(model))
         let ppTs = ppAvgNs > 0 ? Double(pp) / (ppAvgNs / 1e9) : 0
         let tgTs = tgAvgNs > 0 ? Double(pl * tg) / (tgAvgNs / 1e9) : 0
 
@@ -411,7 +526,7 @@ actor LlamaContext {
             "n_prompt": pp,
             "n_gen": 0,
             "n_batch": pl,
-            "n_threads": Int(llama_n_threads(context)),
+            "n_threads": Int(RuntimeLlama.nThreads(context)),
             "avg_ns": Int(ppAvgNs),
             "stddev_ns": 0,
             "avg_ts": ppTs,
@@ -424,7 +539,7 @@ actor LlamaContext {
             "n_prompt": 0,
             "n_gen": tg,
             "n_batch": pl,
-            "n_threads": Int(llama_n_threads(context)),
+            "n_threads": Int(RuntimeLlama.nThreads(context)),
             "avg_ns": Int(tgAvgNs),
             "stddev_ns": 0,
             "avg_ts": tgTs,
@@ -444,14 +559,14 @@ actor LlamaContext {
     func clear() {
         tokens_list.removeAll()
         temporary_invalid_cchars.removeAll()
-        llama_memory_clear(llama_get_memory(context), true)
+        RuntimeLlama.memoryClear(RuntimeLlama.getMemory(context), true)
     }
 
     private func tokenize(text: String, add_bos: Bool) -> [llama_token] {
         let utf8Count = text.utf8.count
         let n_tokens = utf8Count + (add_bos ? 1 : 0) + 1
         let tokens = UnsafeMutablePointer<llama_token>.allocate(capacity: n_tokens)
-        let tokenCount = llama_tokenize(vocab, text, Int32(utf8Count), tokens, Int32(n_tokens), add_bos, false)
+        let tokenCount = RuntimeLlama.tokenize(vocab, text, Int32(utf8Count), tokens, Int32(n_tokens), add_bos, false)
 
         var swiftTokens: [llama_token] = []
         for i in 0..<tokenCount {
@@ -470,7 +585,7 @@ actor LlamaContext {
         defer {
             result.deallocate()
         }
-        let nTokens = llama_token_to_piece(vocab, token, result, 8, 0, false)
+        let nTokens = RuntimeLlama.tokenToPiece(vocab, token, result, 8, 0, false)
 
         if nTokens < 0 {
             let newResult = UnsafeMutablePointer<Int8>.allocate(capacity: Int(-nTokens))
@@ -478,7 +593,7 @@ actor LlamaContext {
             defer {
                 newResult.deallocate()
             }
-            let nNewTokens = llama_token_to_piece(vocab, token, newResult, -nTokens, 0, false)
+            let nNewTokens = RuntimeLlama.tokenToPiece(vocab, token, newResult, -nTokens, 0, false)
             let bufferPointer = UnsafeBufferPointer(start: newResult, count: Int(nNewTokens))
             return Array(bufferPointer)
         } else {

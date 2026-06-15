@@ -3,10 +3,14 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.android)
 }
 
-val vulkanInclude: String = System.getenv("VULKAN_SDK")?.let { "$it/include" }
+val vulkanInclude: String = listOf("/usr/local/include", "/opt/homebrew/include")
+    .firstOrNull {
+        file("$it/vulkan/vulkan.hpp").exists() && file("$it/spirv/unified1/spirv.hpp").exists()
+    }
+    ?: System.getenv("VULKAN_SDK")?.let { "$it/include" }
     ?: listOf("/opt/homebrew/include", "/usr/local/include")
         .firstOrNull { file("$it/vulkan/vulkan.hpp").exists() }
-    ?: "/opt/homebrew/include"
+    ?: "/usr/local/include"
 
 val glslcPath: String = System.getenv("VULKAN_GLSLC")
     ?: listOf("/usr/local/bin/glslc", "/opt/homebrew/bin/glslc")

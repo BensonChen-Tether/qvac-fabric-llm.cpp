@@ -66,7 +66,9 @@ if(ANDROID)
     endif()
 endif()
 
-set(LLAMA_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../../../../)
+# Bonsai GGUF models require prism-llama.cpp (qvac cannot load them).
+# Path: Tether/prism-llama.cpp (seven levels up from this cpp dir to repo root).
+set(LLAMA_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../../../../../prism-llama.cpp)
 add_subdirectory(${LLAMA_SRC} build-llama)
 
 # Minimal shared library so AGP packages llama/ggml backend .so files.
@@ -75,7 +77,7 @@ target_link_libraries(llama-bench-stub PRIVATE llama android log)
 
 set(TARGET llama-bench)
 add_executable(${TARGET} ${LLAMA_SRC}/tools/llama-bench/llama-bench.cpp)
-target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${TARGET} PRIVATE llama-common llama ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 # Package the per-ABI binary into app assets during native build.

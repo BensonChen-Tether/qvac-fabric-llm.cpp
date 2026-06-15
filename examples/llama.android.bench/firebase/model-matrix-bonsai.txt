@@ -1,0 +1,7 @@
+# Bonsai matrix: 1.7B / 4B / 8B × Q1_0 / Q2_0
+bonsai-1.7B/Bonsai-1.7B-Q1_0.gguf
+bonsai-1.7B/Bonsai-1.7B-Q2_0.gguf
+bonsai-4B/Bonsai-4B-Q1_0.gguf
+bonsai-4B/Bonsai-4B-Q2_0.gguf
+bonsai-8B/Bonsai-8B-Q1_0.gguf
+bonsai-8B/Bonsai-8B-Q2_0.gguf

@@ -14,6 +14,8 @@ Options:
   -d, --devices FILE     JSON device matrix (default: firebase/device-matrix.json)
   -D, --device SPEC      Single device spec, repeatable. Example:
                            --device model=oriole,version=33,locale=en,orientation=portrait
+  -f, --matrix-file FILE Text file with one model path per line (single Test Lab session)
+      --cpu-and-gpu      With --matrix-file: run each model with GPU (ngl=999) then CPU (ngl=0)
       --skip-build       Skip Gradle build (APKs must already exist)
   -h, --help             Show this help
 
@@ -32,6 +34,9 @@ Examples:
   ./firebase/run_firebase_bench.sh -d firebase/device-matrix-pixel7.json
   ./firebase/run_firebase_bench.sh -D model=panther,version=34,locale=en,orientation=portrait
   DEVICE_MATRIX=firebase/my-devices.json ./firebase/run_firebase_bench.sh
+
+  # Single session: Bonsai 1.7B/4B/8B Q1+Q2, GPU then CPU (45m timeout)
+  ./firebase/run_firebase_bench.sh -f firebase/model-matrix-bonsai.txt --cpu-and-gpu
 
 Device matrix JSON format (one object per device):
   [
@@ -58,6 +63,9 @@ GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
 DOWNLOAD_RESULTS="${DOWNLOAD_RESULTS:-1}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 DEVICE_SPECS=()
+MATRIX_FILE=""
+RUN_CPU_AND_GPU=0
+MODEL_PATHS_CSV=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -72,6 +80,14 @@ while [[ $# -gt 0 ]]; do
     -D|--device)
       DEVICE_SPECS+=("$2")
       shift 2
+      ;;
+    -f|--matrix-file)
+      MATRIX_FILE="$2"
+      shift 2
+      ;;
+    --cpu-and-gpu)
+      RUN_CPU_AND_GPU=1
+      shift
       ;;
     --skip-build)
       SKIP_BUILD=1
@@ -88,6 +104,43 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+load_models_from_matrix() {
+  local file="$1"
+  local models=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    line="$(echo "$line" | xargs)"
+    [[ -n "$line" ]] || continue
+    models+=("$line")
+  done < "$file"
+  if [[ ${#models[@]} -eq 0 ]]; then
+    echo "No models found in matrix file: $file" >&2
+    exit 1
+  fi
+  local csv=""
+  for model in "${models[@]}"; do
+    if [[ -n "$csv" ]]; then
+      csv+=";"
+    fi
+    csv+="$model"
+  done
+  MODEL_PATHS_CSV="$csv"
+  MATRIX_MODEL_COUNT="${#models[@]}"
+}
+
+if [[ -n "$MATRIX_FILE" ]]; then
+  if [[ ! -f "$MATRIX_FILE" ]]; then
+    echo "Matrix file not found: $MATRIX_FILE" >&2
+    exit 1
+  fi
+  load_models_from_matrix "$MATRIX_FILE"
+  if [[ "$RUN_CPU_AND_GPU" -eq 1 ]]; then
+    SAFE_MODEL_PATH="bonsai_matrix_cpu_gpu"
+  else
+    SAFE_MODEL_PATH="matrix_${MATRIX_MODEL_COUNT}models"
+  fi
+fi
 
 if [[ -z "$GCP_PROJECT_ID" ]]; then
   echo "Set GCP_PROJECT_ID in firebase/config.env (copy from config.env.example)" >&2
@@ -107,9 +160,11 @@ fi
 APP_APK="$ROOT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 TEST_APK="$ROOT_DIR/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 RUN_ID="$(date +%Y%m%d_%H%M%S)"
-SAFE_MODEL_PATH="${MODEL_PATH//\//_}"
-if [[ "$N_GPU_LAYERS" == "0" ]]; then
-  SAFE_MODEL_PATH="${SAFE_MODEL_PATH}_cpu"
+if [[ -z "${SAFE_MODEL_PATH:-}" ]]; then
+  SAFE_MODEL_PATH="${MODEL_PATH//\//_}"
+  if [[ "$N_GPU_LAYERS" == "0" ]]; then
+    SAFE_MODEL_PATH="${SAFE_MODEL_PATH}_cpu"
+  fi
 fi
 RESULTS_DIR="$FIREBASE_DIR/testlab_results/${SAFE_MODEL_PATH}_${RUN_ID}"
 GCS_RESULTS_DIR="${RESULTS_BUCKET%/}/bench/${SAFE_MODEL_PATH}/${RUN_ID}"
@@ -170,16 +225,33 @@ fi
 
 echo "Running Firebase Test Lab..."
 echo "  Project:     $GCP_PROJECT_ID"
-echo "  Model:       $MODEL_PATH"
+if [[ -n "$MODEL_PATHS_CSV" ]]; then
+  echo "  Models:      ${MATRIX_MODEL_COUNT} in one session"
+  echo "  CPU+GPU:     $([[ "$RUN_CPU_AND_GPU" -eq 1 ]] && echo yes || echo no)"
+else
+  echo "  Model:       $MODEL_PATH"
+  echo "  GPU layers:  $N_GPU_LAYERS"
+fi
 echo "  Repetitions: $REPETITIONS"
-echo "  GPU layers:  $N_GPU_LAYERS"
 if [[ ${#DEVICE_SPECS[@]} -gt 0 ]]; then
   echo "  Devices:"
   for spec in "${DEVICE_SPECS[@]}"; do
     echo "    - $spec"
   done
 fi
+echo "  Timeout:     $TEST_TIMEOUT"
 echo "  Results:     $GCS_RESULTS_DIR"
+
+if [[ -n "$MODEL_PATHS_CSV" ]]; then
+  ENV_VARS="model_paths=${MODEL_PATHS_CSV},repetitions=${REPETITIONS},skip_download=false"
+  if [[ "$RUN_CPU_AND_GPU" -eq 1 ]]; then
+    ENV_VARS="${ENV_VARS},run_cpu_and_gpu=true"
+  else
+    ENV_VARS="${ENV_VARS},n_gpu_layers=${N_GPU_LAYERS}"
+  fi
+else
+  ENV_VARS="model_path=${MODEL_PATH},repetitions=${REPETITIONS},n_gpu_layers=${N_GPU_LAYERS},skip_download=false"
+fi
 
 gcloud firebase test android run \
   --project "$GCP_PROJECT_ID" \
@@ -188,7 +260,7 @@ gcloud firebase test android run \
   --test "$TEST_APK" \
   "${GCLOUD_DEVICE_ARGS[@]}" \
   --timeout "$TEST_TIMEOUT" \
-  --environment-variables "model_path=${MODEL_PATH},repetitions=${REPETITIONS},n_gpu_layers=${N_GPU_LAYERS},skip_download=false" \
+  --environment-variables "$ENV_VARS" \
   --results-bucket "${RESULTS_BUCKET#gs://}" \
   --results-dir "bench/${SAFE_MODEL_PATH}/${RUN_ID}"
 

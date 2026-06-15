@@ -62,6 +62,8 @@ def extract_metrics(bench_result: Union[Dict[str, Any], List[Any]]) -> Dict[str,
     }
 
     def extract_from_entry(entry: Dict[str, Any]) -> None:
+        if not isinstance(entry, dict):
+            return
         if metrics["n_gpu_layers"] is None:
             metrics["n_gpu_layers"] = entry.get("n_gpu_layers")
 
@@ -155,40 +157,49 @@ def _extract_json_array(text: str) -> Optional[List[Any]]:
     return None
 
 
-def parse_logcat_text(text: str) -> Tuple[Optional[Dict[str, Any]], Optional[Union[Dict[str, Any], List[Any]]]]:
-    meta: Optional[Dict[str, Any]] = None
-    result_parts: List[str] = []
+def parse_logcat_runs(
+    text: str,
+) -> List[Tuple[Optional[Dict[str, Any]], Optional[Union[Dict[str, Any], List[Any]]]]]:
+    """Return one (meta, bench) pair per benchmark run in logcat."""
+    runs: List[Tuple[Optional[Dict[str, Any]], Optional[Union[Dict[str, Any], List[Any]]]]] = []
+    current_meta: Optional[Dict[str, Any]] = None
+    result_lines: List[str] = []
+
+    def flush_result() -> None:
+        nonlocal result_lines
+        if not result_lines:
+            return
+        combined = "\n".join(result_lines)
+        bench = _extract_json_array(combined)
+        if bench is None:
+            parsed = parse_json_payload(combined)
+            bench = parsed if parsed is not None else None
+        runs.append((current_meta, bench))
+        result_lines = []
 
     for line in text.splitlines():
         if META_TAG in line:
+            flush_result()
             payload = _extract_tag_payload(line, META_TAG)
             if payload:
                 parsed = parse_json_payload(payload)
                 if isinstance(parsed, dict):
-                    meta = parsed
+                    current_meta = parsed
 
         if RESULT_TAG in line:
             payload = _extract_tag_payload(line, RESULT_TAG)
             if payload:
-                result_parts.append(payload)
-            continue
+                result_lines.append(payload)
 
-        # Fallback: single-line payloads where the tag was stripped by an exporter.
-        if line.strip().startswith("{") and meta is None and "model_path" in line:
-            parsed = parse_json_payload(line)
-            if isinstance(parsed, dict):
-                meta = parsed
+    flush_result()
+    return runs
 
-    bench: Optional[Union[Dict[str, Any], List[Any]]] = None
-    if result_parts:
-        combined = "\n".join(result_parts)
-        bench = _extract_json_array(combined)
-        if bench is None:
-            parsed = parse_json_payload(combined)
-            if parsed is not None:
-                bench = parsed
 
-    return meta, bench
+def parse_logcat_text(text: str) -> Tuple[Optional[Dict[str, Any]], Optional[Union[Dict[str, Any], List[Any]]]]:
+    runs = parse_logcat_runs(text)
+    if not runs:
+        return None, None
+    return runs[-1]
 
 
 def infer_device_name(path: Path, meta: Optional[Dict[str, Any]]) -> str:
@@ -248,37 +259,38 @@ def collect_rows(results_dir: Path) -> List[Dict[str, Any]]:
         if RESULT_TAG not in text and META_TAG not in text:
             continue
 
-        meta, bench = parse_logcat_text(text)
-        if bench is None:
-            continue
-
-        device = infer_device_name(file_path, meta)
         device_axis = file_path.parent.name
-        model_path = meta.get("model_path") if meta else ""
-        key = f"{device_axis}|{model_path}"
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
+        for meta, bench in parse_logcat_runs(text):
+            if bench is None:
+                continue
 
-        metrics = extract_metrics(bench)
-        rows.append({
-            "device": device,
-            "manufacturer": meta.get("manufacturer") if meta else None,
-            "device_model": meta.get("device_model") if meta else None,
-            "android_release": meta.get("android_release") if meta else None,
-            "model_path": meta.get("model_path") if meta else None,
-            "model_file": meta.get("model_file") if meta else None,
-            "repetitions": meta.get("repetitions") if meta else None,
-            "prompt_tokens": meta.get("prompt_tokens") if meta else None,
-            "gen_tokens": meta.get("gen_tokens") if meta else None,
-            "n_gpu_layers": metrics.get("n_gpu_layers"),
-            "backend": metrics.get("backend"),
-            "pp_t_s": metrics.get("pp_t_s"),
-            "tg_t_s": metrics.get("tg_t_s"),
-            "ttft_ms": metrics.get("ttft_ms"),
-            "model_size_bytes": metrics.get("model_size"),
-            "source_file": str(file_path.relative_to(results_dir)),
-        })
+            device = infer_device_name(file_path, meta)
+            model_path = meta.get("model_path") if meta else ""
+            n_gpu_layers = meta.get("n_gpu_layers") if meta else None
+            key = f"{device_axis}|{model_path}|{n_gpu_layers}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            metrics = extract_metrics(bench)
+            rows.append({
+                "device": device,
+                "manufacturer": meta.get("manufacturer") if meta else None,
+                "device_model": meta.get("device_model") if meta else None,
+                "android_release": meta.get("android_release") if meta else None,
+                "model_path": meta.get("model_path") if meta else None,
+                "model_file": meta.get("model_file") if meta else None,
+                "repetitions": meta.get("repetitions") if meta else None,
+                "prompt_tokens": meta.get("prompt_tokens") if meta else None,
+                "gen_tokens": meta.get("gen_tokens") if meta else None,
+                "n_gpu_layers": metrics.get("n_gpu_layers"),
+                "backend": metrics.get("backend"),
+                "pp_t_s": metrics.get("pp_t_s"),
+                "tg_t_s": metrics.get("tg_t_s"),
+                "ttft_ms": metrics.get("ttft_ms"),
+                "model_size_bytes": metrics.get("model_size"),
+                "source_file": str(file_path.relative_to(results_dir)),
+            })
 
     for meta_path in meta_files:
         result_path = meta_path.parent / "benchmark_result.json"

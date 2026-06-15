@@ -18,6 +18,10 @@
 		DD84C9FD2D747FED007778EC /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DD84C9FC2D747FED007778EC /* llama.xcframework */; };
 		DD84C9FE2D747FED007778EC /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DD84C9FC2D747FED007778EC /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D1A2F0012E0C8E8B00A1B1C0 /* FinetuneBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = D1A2F0002E0C8E8B00A1B1C0 /* FinetuneBridge.mm */; };
+		P1A2B0012E0C8E8B00A1B1C0 /* PrismLlamaBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = P1A2B0002E0C8E8B00A1B1C0 /* PrismLlamaBridge.mm */; };
+		P1A2B0032E0C8E8B00A1B1C0 /* RuntimeLlama.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1A2B0022E0C8E8B00A1B1C0 /* RuntimeLlama.swift */; };
+		P1A2B0052E0C8E8B00A1B1C0 /* LlamaModelBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1A2B0042E0C8E8B00A1B1C0 /* LlamaModelBackend.swift */; };
+		P1A2B0072E0C8E8B00A1B1C0 /* prism_llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = P1A2B0062E0C8E8B00A1B1C0 /* prism_llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E1A100022AC328BD0096AF73 /* BenchmarkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100012AC328BD0096AF73 /* BenchmarkUITests.swift */; };
 		E1A100082AC328BD0096AF73 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1A100072AC328BD0096AF73 /* XCTest.framework */; };
 		E1A100102AC328BD0096AF73 /* BenchmarkAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */; };
@@ -32,6 +36,7 @@
 			dstSubfolderSpec = 10;
 			files = (
 				DD84C9FE2D747FED007778EC /* llama.xcframework in Embed Frameworks */,
+				P1A2B0072E0C8E8B00A1B1C0 /* prism_llama.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -52,6 +57,11 @@
 		D1A2F0002E0C8E8B00A1B1C0 /* FinetuneBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FinetuneBridge.mm; sourceTree = "<group>"; };
 		D1A2F0022E0C8E8B00A1B1C0 /* FinetuneBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FinetuneBridge.h; sourceTree = "<group>"; };
 		D1A2F0032E0C8E8B00A1B1C0 /* llama_swiftui-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llama_swiftui-Bridging-Header.h"; sourceTree = "<group>"; };
+		P1A2B0002E0C8E8B00A1B1C0 /* PrismLlamaBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PrismLlamaBridge.mm; sourceTree = "<group>"; };
+		P1A2B0012E0C8E8B00A1B1C1 /* PrismLlamaBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrismLlamaBridge.h; sourceTree = "<group>"; };
+		P1A2B0022E0C8E8B00A1B1C0 /* RuntimeLlama.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeLlama.swift; sourceTree = "<group>"; };
+		P1A2B0042E0C8E8B00A1B1C0 /* LlamaModelBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlamaModelBackend.swift; sourceTree = "<group>"; };
+		P1A2B0062E0C8E8B00A1B1C0 /* prism_llama.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = prism_llama.xcframework; path = "../../../prism-llama.cpp/build-apple/prism_llama.xcframework"; sourceTree = "<group>"; };
 		E1A100012AC328BD0096AF73 /* BenchmarkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkUITests.swift; sourceTree = "<group>"; };
 		E1A100032AC328BD0096AF73 /* llama.swiftui_benchUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = llama.swiftui_benchUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1A100072AC328BD0096AF73 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
@@ -131,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				DD84C9FC2D747FED007778EC /* llama.xcframework */,
+				P1A2B0062E0C8E8B00A1B1C0 /* prism_llama.xcframework */,
 				549479CA2AC9E16000E0F78B /* Metal.framework */,
 				8A39BE092AC7601000BFEB40 /* Accelerate.framework */,
 				E1A100072AC328BD0096AF73 /* XCTest.framework */,
@@ -157,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				8A907F322AC7134E006146EA /* LibLlama.swift */,
+				P1A2B0022E0C8E8B00A1B1C0 /* RuntimeLlama.swift */,
 			);
 			path = llama.cpp.swift;
 			sourceTree = "<group>";
@@ -165,8 +177,10 @@
 			isa = PBXGroup;
 			children = (
 				D1A2F0022E0C8E8B00A1B1C0 /* FinetuneBridge.h */,
+				P1A2B0012E0C8E8B00A1B1C1 /* PrismLlamaBridge.h */,
 				D1A2F0032E0C8E8B00A1B1C0 /* llama_swiftui-Bridging-Header.h */,
 				D1A2F0002E0C8E8B00A1B1C0 /* FinetuneBridge.mm */,
+				P1A2B0002E0C8E8B00A1B1C0 /* PrismLlamaBridge.mm */,
 			);
 			path = Bridging;
 			sourceTree = "<group>";
@@ -183,6 +197,7 @@
 			isa = PBXGroup;
 			children = (
 				8A9F7C4C2AC332EE008AE1EA /* LlamaState.swift */,
+				P1A2B0042E0C8E8B00A1B1C0 /* LlamaModelBackend.swift */,
 				E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */,
 				E1A100132AC328BD0096AF73 /* BenchmarkConfig.swift */,
 			);
@@ -300,6 +315,9 @@
 				E1A100102AC328BD0096AF73 /* BenchmarkAutomation.swift in Sources */,
 				E1A100122AC328BD0096AF73 /* BenchmarkConfig.swift in Sources */,
 				D1A2F0012E0C8E8B00A1B1C0 /* FinetuneBridge.mm in Sources */,
+				P1A2B0012E0C8E8B00A1B1C0 /* PrismLlamaBridge.mm in Sources */,
+				P1A2B0032E0C8E8B00A1B1C0 /* RuntimeLlama.swift in Sources */,
+				P1A2B0052E0C8E8B00A1B1C0 /* LlamaModelBackend.swift in Sources */,
 				8A1C83792AC328BD0096AF73 /* ContentView.swift in Sources */,
 				8A1C83772AC328BD0096AF73 /* llama_swiftuiApp.swift in Sources */,
 			);

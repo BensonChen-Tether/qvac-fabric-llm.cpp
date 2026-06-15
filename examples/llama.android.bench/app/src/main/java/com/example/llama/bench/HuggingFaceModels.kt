@@ -21,7 +21,12 @@ object HuggingFaceModels {
         Entry("qwen3-1.7B/Qwen3-1.7B-Q4_K_M.gguf", "Qwen3 1.7B Q4_K_M"),
         Entry("qwen3-1.7B/Qwen3-1.7B-TQ1_0.gguf", "Qwen3 1.7B TQ1_0"),
         Entry("qwen3-1.7B/Qwen3-1.7B-TQ2_0.gguf", "Qwen3 1.7B TQ2_0"),
+        Entry("bonsai-1.7B/Bonsai-1.7B-Q1_0.gguf", "Bonsai 1.7B Q1_0"),
         Entry("bonsai-1.7B/Bonsai-1.7B-Q2_0.gguf", "Bonsai 1.7B Q2_0"),
+        Entry("bonsai-4B/Bonsai-4B-Q1_0.gguf", "Bonsai 4B Q1_0"),
+        Entry("bonsai-4B/Bonsai-4B-Q2_0.gguf", "Bonsai 4B Q2_0"),
+        Entry("bonsai-8B/Bonsai-8B-Q1_0.gguf", "Bonsai 8B Q1_0"),
+        Entry("bonsai-8B/Bonsai-8B-Q2_0.gguf", "Bonsai 8B Q2_0"),
     )
 
     val families: List<String> = models.map { it.family }.distinct()
