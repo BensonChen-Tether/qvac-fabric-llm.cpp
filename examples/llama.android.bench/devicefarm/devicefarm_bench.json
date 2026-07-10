@@ -1,0 +1,8 @@
+{
+  "automation": true,
+  "model_path": "qwen3_1p7b-step0165000-TQ2_0.gguf",
+  "model_download_url": "https://tether-ai-dev.s3.eu-central-1.amazonaws.com/models/qwen3-checkpoints/gguf/qwen3_1p7b-step0165000-TQ2_0.gguf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ASIA4EHGV2XTNKRTYVGA%2F20260710%2Feu-central-1%2Fs3%2Faws4_request&X-Amz-Date=20260710T143558Z&X-Amz-Expires=7200&X-Amz-SignedHeaders=host&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEO7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaDGV1LWNlbnRyYWwtMSJIMEYCIQCvXTXeQeNkC3GSS8L%2FY8twGK8jSvnoX1A1duZ7VPvbvwIhAMeL0U1b93ZnVwpmh9EqGx7oJ7cyYZ941i8dH5Xmwwi%2BKtEDCLf%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQBRoMODMzNzA3NDMxMzk4Igw50juHlRLcrCI8z7AqpQPuOy7n7DP1kS0hhuj0eiz0k3ai4%2BwaQrmWl2hJ1kXpcCxyFtWN3%2BOkdQcii5UE7oCWQEVlqBlneT2PC3ejjuVQChT1SRgVj6xecMgzyl8mREmWWKrJx6Ojc%2BMMDUE%2FGrHGeDzgeGGKHOeC6i20EPaWyRNGRzjFIH8w7xtaOC0dshNrSt6Dz4FuxnLrwJiD1H0w1CAkKJ9WTSzj0XLJoQ%2F5pIFgZOynu4k0nogfHZKY9zAEuJnHVzLN%2Fw11tFYUjqIVNNJm%2BZlEnLt%2FrCSTNag%2FyWe6zVKXzHUjTdM8L8V0XPKQAWt2XL5Ch2fR2Pi5OtQuUXvak0yj9N51NK4c3Z8bleTt54uy3x88hfUX3oDMZ%2B%2F0Di17gzB8ICKreljBOoSL5X0FOuIqr6cyu%2F4M7d31Ul9211UdBvirNLgBrviXwGy4Z%2BJlfVF3u16iHyRCTVDaP7isKXysYb6tgvIvq%2BE1ow9OkxzKqKqgOro85RkPkhjlgqSH08n5%2Fi0Nwaq4aWn8YUo6VjTsuHliPgc4wMRVfzmD7qbz5EMKoNHw%2FMZqFmOzZan%2BMOL5w9IGOqcBeDseU7NDaSH99N8hnec9RdZsrzkRSNl5DLssfMPTfKxqkXqARL%2BGDFSqppq6OqRMd9xP3PwtTlwMYQ%2FLEmdbjGeFfSce4jfdIkaHAPAVPxv%2B%2F1wRAknmSPgjx97CThAWCzFGAwHPgtAlTmb8SBDsb4N3vbWBRKIXFsay5qNvdeWSsKViHNL%2FHuFVt6pijtph4QplP2fdMmqgJq5%2BSTLNuCGOLTLhfR0%3D&X-Amz-Signature=80a11382ec90898e45c78b735db114675e8fef1a0dd5b997be30503c94558fc0",
+  "n_gpu_layers": 999,
+  "repetitions": 5,
+  "skip_download": false
+}

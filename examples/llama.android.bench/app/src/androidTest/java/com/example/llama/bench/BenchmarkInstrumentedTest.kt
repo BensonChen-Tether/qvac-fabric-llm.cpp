@@ -23,14 +23,21 @@ class BenchmarkInstrumentedTest {
     fun runSelectedModelBenchmark() {
         runBlocking(Dispatchers.IO) {
             val args = InstrumentationRegistry.getArguments()
-            val repetitions = args.getString("repetitions")?.toIntOrNull()
-                ?: BenchConfig.AUTOMATION_REPETITIONS
-            val skipDownload = args.getString("skip_download")?.toBoolean() ?: true
-            val runCpuAndGpu = args.getString("run_cpu_and_gpu")?.toBoolean() ?: false
             val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val bundled = DeviceFarmBenchConfig.loadFromAssets(context)
 
-            val modelPaths = parseModelPaths(args)
+            val repetitions = bundled?.repetitions
+                ?: args.getString("repetitions")?.toIntOrNull()
+                ?: BenchConfig.AUTOMATION_REPETITIONS
+            val skipDownload = bundled?.skipDownload
+                ?: args.getString("skip_download")?.toBoolean()
+                ?: true
+            val runCpuAndGpu = args.getString("run_cpu_and_gpu")?.toBoolean() ?: false
+            val downloadURL = bundled?.modelDownloadUrl
+
+            val modelPaths = bundled?.modelPath?.let { listOf(it) } ?: parseModelPaths(args)
             val nGpuLayersList = when {
+                bundled?.nGpuLayers != null -> listOf(bundled.nGpuLayers)
                 runCpuAndGpu -> listOf(BenchConfig.DEFAULT_N_GPU_LAYERS, 0)
                 else -> listOf(
                     args.getString("n_gpu_layers")?.toIntOrNull()
@@ -54,6 +61,7 @@ class BenchmarkInstrumentedTest {
                         repetitions = repetitions,
                         nGpuLayers = nGpuLayersList.first(),
                         skipDownloadIfCached = skipDownload,
+                        downloadURL = downloadURL,
                     ),
                 )
             }

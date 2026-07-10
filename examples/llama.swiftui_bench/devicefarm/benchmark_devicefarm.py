@@ -20,6 +20,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 DEFAULT_RESULTS_DIR = SCRIPT_DIR / "devicefarm_results"
 RESULT_TAG = "LLAMA_BENCH_RESULT"
 META_TAG = "LLAMA_BENCH_META"
+ERROR_TAG = "LLAMA_BENCH_ERROR"
 
 
 def estimate_ttft_ms(bench_result: Union[Dict[str, Any], List[Any]]) -> Optional[float]:
@@ -138,11 +139,17 @@ def _extract_json_array(text: str) -> Optional[List[Any]]:
     return None
 
 
-def parse_device_farm_log(text: str) -> tuple[Optional[Dict[str, Any]], Optional[Union[Dict[str, Any], List[Any]]]]:
+def parse_device_farm_log(text: str) -> tuple[Optional[Dict[str, Any]], Optional[Union[Dict[str, Any], List[Any]]], Optional[str]]:
     meta: Optional[Dict[str, Any]] = None
     result_parts: List[str] = []
+    error_message: Optional[str] = None
 
     for line in text.splitlines():
+        if ERROR_TAG in line:
+            payload = _extract_tag_payload(line, ERROR_TAG)
+            if payload:
+                error_message = payload
+
         if META_TAG in line:
             payload = _extract_tag_payload(line, META_TAG)
             if payload:
@@ -164,7 +171,7 @@ def parse_device_farm_log(text: str) -> tuple[Optional[Dict[str, Any]], Optional
             if parsed is not None:
                 bench = parsed
 
-    return meta, bench
+    return meta, bench, error_message
 
 
 def infer_device_name(path: Path, meta: Optional[Dict[str, Any]]) -> str:
@@ -209,8 +216,34 @@ def collect_rows(results_dir: Path) -> List[Dict[str, Any]]:
         text = file_path.read_text(errors="ignore")
         if RESULT_TAG not in text and META_TAG not in text:
             continue
-        meta, bench = parse_device_farm_log(text)
+        meta, bench, error_message = parse_device_farm_log(text)
         if bench is None:
+            if error_message:
+                device = infer_device_name(file_path, meta)
+                model_path = meta.get("model_path") if meta else ""
+                n_gpu = meta.get("n_gpu_layers") if meta else None
+                key = f"{file_path.parent.name}|{model_path}|{n_gpu}|error"
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    rows.append({
+                        "device": device,
+                        "manufacturer": meta.get("manufacturer") if meta else None,
+                        "device_model": meta.get("device_model") if meta else None,
+                        "ios_version": meta.get("ios_version") if meta else None,
+                        "model_path": model_path,
+                        "model_file": meta.get("model_file") if meta else None,
+                        "repetitions": meta.get("repetitions") if meta else None,
+                        "prompt_tokens": meta.get("prompt_tokens") if meta else None,
+                        "gen_tokens": meta.get("gen_tokens") if meta else None,
+                        "n_gpu_layers": n_gpu,
+                        "backend": None,
+                        "pp_t_s": None,
+                        "tg_t_s": None,
+                        "ttft_ms": None,
+                        "model_size_bytes": None,
+                        "error": error_message,
+                        "source_file": str(file_path.relative_to(results_dir)),
+                    })
             continue
         device = infer_device_name(file_path, meta)
         model_path = meta.get("model_path") if meta else ""

@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var showingHelp = false    // To track if Help Sheet should be shown
     @State private var automationStatus = ""
     @State private var automationComplete = false
+    @State private var automationFailed = false
 
     var body: some View {
         NavigationView {
@@ -18,6 +19,9 @@ struct ContentView: View {
                     if automationComplete {
                         Text("BENCH_COMPLETE")
                             .accessibilityIdentifier("BENCH_COMPLETE")
+                    } else if automationFailed {
+                        Text("BENCH_FAILED")
+                            .accessibilityIdentifier("BENCH_FAILED")
                     }
                 }
 
@@ -72,7 +76,10 @@ struct ContentView: View {
                     automationStatus = "Benchmark complete."
                     automationComplete = true
                 } catch {
-                    automationStatus = "Benchmark failed: \(error.localizedDescription)"
+                    let message = error.localizedDescription
+                    NSLog("%@ %@", BenchmarkAutomation.errorLogTag, message)
+                    automationStatus = message
+                    automationFailed = true
                 }
             }
 

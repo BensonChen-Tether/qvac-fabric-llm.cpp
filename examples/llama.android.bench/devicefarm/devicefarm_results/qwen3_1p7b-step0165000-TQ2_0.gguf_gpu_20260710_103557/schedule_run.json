@@ -1,0 +1,46 @@
+{
+    "run": {
+        "arn": "arn:aws:devicefarm:us-west-2:833707431398:run:4e9243a1-25f7-4fc3-b7f6-e2e02f6c1a73/b4f0a679-2589-4f2e-8b56-1a30be2a68de",
+        "name": "app-debug.apk",
+        "type": "INSTRUMENTATION",
+        "platform": "ANDROID_APP",
+        "created": "2026-07-10T10:36:41.597000-04:00",
+        "status": "SCHEDULING",
+        "result": "PENDING",
+        "started": "2026-07-10T10:36:41.597000-04:00",
+        "counters": {
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "warned": 0,
+            "errored": 0,
+            "stopped": 0,
+            "skipped": 0
+        },
+        "message": "",
+        "totalJobs": 1,
+        "completedJobs": 0,
+        "billingMethod": "METERED",
+        "appUpload": "arn:aws:devicefarm:us-west-2:833707431398:upload:4e9243a1-25f7-4fc3-b7f6-e2e02f6c1a73/1f4c7291-df5a-4b88-98dc-2eba83c3e88e",
+        "jobTimeoutMinutes": 90,
+        "radios": {
+            "wifi": true,
+            "bluetooth": false,
+            "nfc": true,
+            "gps": true
+        },
+        "deviceSelectionResult": {
+            "filters": [
+                {
+                    "attribute": "ARN",
+                    "operator": "EQUALS",
+                    "values": [
+                        "arn:aws:devicefarm:us-west-2::device:B199BFDD617B46C192A60F137B0D376F"
+                    ]
+                }
+            ],
+            "matchedDevicesCount": 1,
+            "maxDevices": 1
+        }
+    }
+}

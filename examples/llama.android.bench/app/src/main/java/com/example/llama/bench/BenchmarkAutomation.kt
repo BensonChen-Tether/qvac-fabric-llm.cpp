@@ -53,8 +53,9 @@ object BenchmarkAutomation {
         repetitions: Int = BenchConfig.AUTOMATION_REPETITIONS,
         nGpuLayers: Int = BenchConfig.DEFAULT_N_GPU_LAYERS,
         skipDownloadIfCached: Boolean = true,
+        downloadURL: String? = null,
     ): RunResult = withContext(Dispatchers.IO) {
-        val modelFile = ensureModel(context, modelPathInRepo, skipDownloadIfCached)
+        val modelFile = ensureModel(context, modelPathInRepo, skipDownloadIfCached, downloadURL)
         val config = BenchConfig(
             repetitions = repetitions,
             nGpuLayers = nGpuLayers,
@@ -62,7 +63,7 @@ object BenchmarkAutomation {
         )
 
         val benchOutput = LlamaBenchRunner.run(context, modelFile.absolutePath, config)
-        val meta = buildMeta(context, modelPathInRepo, modelFile, repetitions, nGpuLayers)
+        val meta = buildMeta(context, modelPathInRepo, modelFile, repetitions, nGpuLayers, downloadURL)
         val metaFile = writeText(context, META_FILE, meta.toString())
         val resultFile = writeText(context, RESULT_FILE, benchOutput.trim())
 
@@ -82,16 +83,20 @@ object BenchmarkAutomation {
         context: Context,
         modelPathInRepo: String,
         skipDownloadIfCached: Boolean,
+        downloadURL: String? = null,
     ): File {
         val modelsDir = File(context.filesDir, MODELS_DIR).also { it.mkdirs() }
-        val modelFile = File(modelsDir, HuggingFaceModels.localFileName(modelPathInRepo))
+        val fileName = modelPathInRepo.substringAfterLast('/')
+        val modelFile = File(modelsDir, fileName)
         if (skipDownloadIfCached && modelFile.exists() && modelFile.length() > 0) {
             Log.i(TAG, "Using cached model: ${modelFile.name}")
             return modelFile
         }
 
+        val url = downloadURL?.takeIf { it.isNotEmpty() }
+            ?: HuggingFaceModels.downloadUrl(modelPathInRepo)
         ModelDownloader.download(
-            url = HuggingFaceModels.downloadUrl(modelPathInRepo),
+            url = url,
             destination = modelFile,
             onProgress = { _, _ -> },
         )
@@ -104,7 +109,12 @@ object BenchmarkAutomation {
         modelFile: File,
         repetitions: Int,
         nGpuLayers: Int,
+        downloadURL: String? = null,
     ): JSONObject {
+        val downloadSource = when {
+            !downloadURL.isNullOrEmpty() -> "s3_presigned"
+            else -> "huggingface"
+        }
         return JSONObject().apply {
             put("model_path", modelPathInRepo)
             put("model_file", modelFile.name)
@@ -114,6 +124,9 @@ object BenchmarkAutomation {
             put("gen_tokens", BenchConfig.DEFAULT_GEN_TOKENS)
             put("n_gpu_layers", nGpuLayers)
             put("repo_id", HuggingFaceModels.REPO_ID)
+            put("download_source", downloadSource)
+            put("s3_bucket", "tether-ai-dev")
+            put("s3_prefix", "models/qwen3-checkpoints/gguf/")
             put("device_model", Build.MODEL)
             put("device", Build.DEVICE)
             put("manufacturer", Build.MANUFACTURER)

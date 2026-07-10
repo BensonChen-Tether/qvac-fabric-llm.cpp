@@ -37,10 +37,12 @@ aws devicefarm list-artifacts \
   --query 'artifacts[*].[name,type,url]' \
   --output text > "$OUTPUT_DIR/artifacts.txt"
 
+artifact_idx=0
 while IFS=$'\t' read -r name type url; do
   [[ -z "${name:-}" ]] && continue
+  artifact_idx=$((artifact_idx + 1))
   safe_name="${name//\//_}"
-  curl --fail --silent --show-error -L "$url" -o "$OUTPUT_DIR/${safe_name}"
+  curl --fail --silent --show-error -L "$url" -o "$OUTPUT_DIR/${artifact_idx}_${safe_name}"
 done < "$OUTPUT_DIR/artifacts.txt"
 
 python3 "$DEVICEFARM_DIR/benchmark_devicefarm.py" \

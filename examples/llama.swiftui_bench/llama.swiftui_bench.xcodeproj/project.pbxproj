@@ -26,6 +26,7 @@
 		E1A100082AC328BD0096AF73 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1A100072AC328BD0096AF73 /* XCTest.framework */; };
 		E1A100102AC328BD0096AF73 /* BenchmarkAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */; };
 		E1A100122AC328BD0096AF73 /* BenchmarkConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100132AC328BD0096AF73 /* BenchmarkConfig.swift */; };
+		E1A100142AC328BD0096AF73 /* DeviceFarmBenchConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A100152AC328BD0096AF73 /* DeviceFarmBenchConfig.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -67,6 +68,7 @@
 		E1A100072AC328BD0096AF73 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkAutomation.swift; sourceTree = "<group>"; };
 		E1A100132AC328BD0096AF73 /* BenchmarkConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkConfig.swift; sourceTree = "<group>"; };
+		E1A100152AC328BD0096AF73 /* DeviceFarmBenchConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceFarmBenchConfig.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -200,6 +202,7 @@
 				P1A2B0042E0C8E8B00A1B1C0 /* LlamaModelBackend.swift */,
 				E1A100112AC328BD0096AF73 /* BenchmarkAutomation.swift */,
 				E1A100132AC328BD0096AF73 /* BenchmarkConfig.swift */,
+				E1A100152AC328BD0096AF73 /* DeviceFarmBenchConfig.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -314,6 +317,7 @@
 				8A9F7C4D2AC332EE008AE1EA /* LlamaState.swift in Sources */,
 				E1A100102AC328BD0096AF73 /* BenchmarkAutomation.swift in Sources */,
 				E1A100122AC328BD0096AF73 /* BenchmarkConfig.swift in Sources */,
+				E1A100142AC328BD0096AF73 /* DeviceFarmBenchConfig.swift in Sources */,
 				D1A2F0012E0C8E8B00A1B1C0 /* FinetuneBridge.mm in Sources */,
 				P1A2B0012E0C8E8B00A1B1C0 /* PrismLlamaBridge.mm in Sources */,
 				P1A2B0032E0C8E8B00A1B1C0 /* RuntimeLlama.swift in Sources */,

@@ -1,0 +1,16 @@
+qwen3_1p7b-epoch01-TQ2_0.gguf
+qwen3_1p7b-final-TQ2_0.gguf
+qwen3_1p7b-step0066000-TQ2_0.gguf
+qwen3_1p7b-step0099000-TQ2_0.gguf
+qwen3_1p7b-step0132000-TQ2_0.gguf
+qwen3_1p7b-step0165000-TQ2_0.gguf
+qwen3_1p7b-step0198000-TQ2_0.gguf
+qwen3_1p7b-step0231000-TQ2_0.gguf
+qwen3_1p7b-step0264000-TQ2_0.gguf
+qwen3_4b-step0033000-TQ2_0.gguf
+qwen3_4b-step0066000-TQ2_0.gguf
+qwen3_4b2507-step0033000-TQ2_0.gguf
+qwen3_4b2507-step0066000-TQ2_0.gguf
+qwen3_8b-step0033000-TQ2_0.gguf
+qwen3_8b-step0066000-TQ2_0.gguf
+qwen3_8b-step0099000-TQ2_0.gguf
