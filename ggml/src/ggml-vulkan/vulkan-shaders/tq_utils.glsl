@@ -1,16 +1,20 @@
 #ifndef TQ_UTILS_COMP
 #define TQ_UTILS_COMP
 
-#if defined(DATA_A_TQ2_0)
+#if defined(DATA_A_TQ2_0) || defined(DATA_A_TQ2_0_128)
 #if defined(TQ2_CM2)
 int tq2_dequantize(const in decodeBufTQ2_0 bl, uint iqs) {
 #else
 int tq2_dequantize(uint ib, uint iqs) {
 #endif
-    const uint upper = iqs / 128;
+    // CPU packs fixed 128-element groups into 32 qs bytes (not QUANT_K/2).
+    // Matches quantize_row_tq2_0{,_128}_ref: qs[g*32+m] bits 2n = elem g*128+m+n*32.
+    const uint tq2_group = 128u;
+    const uint tq2_chunk = 32u;
+    const uint upper = iqs / tq2_group;
 
-    const uint byte = (upper * 32) + (iqs % 32);
-    const uint shift = ((iqs % 128) / 32) * 2;
+    const uint byte = (upper * tq2_chunk) + (iqs % tq2_chunk);
+    const uint shift = ((iqs % tq2_group) / tq2_chunk) * 2u;
 
     #if defined(TQ2_CM2)
     const int c = (int(bl.block.qs[byte]) >> shift) & 3;

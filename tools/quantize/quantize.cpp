@@ -45,7 +45,8 @@ static const std::vector<quant_option> QUANT_OPTIONS = {
     { "IQ1_S",    LLAMA_FTYPE_MOSTLY_IQ1_S,    " 1.56 bpw quantization",            },
     { "IQ1_M",    LLAMA_FTYPE_MOSTLY_IQ1_M,    " 1.75 bpw quantization",            },
     { "TQ1_0",    LLAMA_FTYPE_MOSTLY_TQ1_0,    " 1.69 bpw ternarization",           },
-    { "TQ2_0",    LLAMA_FTYPE_MOSTLY_TQ2_0,    " 2.06 bpw ternarization",           },
+    { "TQ2_0",    LLAMA_FTYPE_MOSTLY_TQ2_0,    " 2.06 bpw ternarization (block 256)", },
+    { "TQ2_0_128",LLAMA_FTYPE_MOSTLY_TQ2_0_128," 2.06 bpw ternarization (block 128)", },
     { "Q2_K",     LLAMA_FTYPE_MOSTLY_Q2_K,     " 2.96G, +3.5199 ppl @ Llama-3-8B",  },
     { "Q2_K_S",   LLAMA_FTYPE_MOSTLY_Q2_K_S,   " 2.96G, +3.1836 ppl @ Llama-3-8B",  },
     { "IQ3_XXS",  LLAMA_FTYPE_MOSTLY_IQ3_XXS,  " 3.06 bpw quantization",            },
@@ -121,7 +122,7 @@ static bool try_parse_ftype(const std::string & ftype_str_in, llama_ftype & ftyp
 static void usage(const char * executable) {
     printf("usage: %s [--help] [--allow-requantize] [--leave-output-tensor] [--pure] [--imatrix] [--include-weights]\n", executable);
     printf("       [--exclude-weights] [--output-tensor-type] [--token-embedding-type] [--tensor-type] [--tensor-type-file]\n");
-    printf("       [--prune-layers] [--keep-split] [--override-kv] [--dry-run]\n");
+    printf("       [--prune-layers] [--keep-split] [--override-kv] [--dry-run] [--block-size N]\n");
     printf("       model-f32.gguf [model-quant.gguf] type [nthreads]\n\n");
     printf("  --allow-requantize\n");
     printf("                                      allow requantizing tensors that have already been quantized\n");
@@ -160,7 +161,9 @@ static void usage(const char * executable) {
     printf("                                      WARNING: this is an advanced option, use with care.\n");
     printf("  --dry-run\n");
     printf("                                      calculate and show the final quantization size without performing quantization\n");
-    printf("                                      example: llama-quantize --dry-run model-f32.gguf Q4_K\n\n");
+    printf("                                      example: llama-quantize --dry-run model-f32.gguf Q4_K\n");
+    printf("  --block-size N\n");
+    printf("                                      alias for TQ2_0_128 when N=128 with TQ2_0 (deprecated)\n\n");
     printf("note: --include-weights and --exclude-weights cannot be used together\n\n");
     printf("-----------------------------------------------------------------------------\n");
     printf(" allowed quantization types\n");
@@ -395,6 +398,7 @@ int llama_quantize(int argc, char ** argv) {
     }
 
     llama_model_quantize_params params = llama_model_quantize_default_params();
+    int tq2_block_size = 0; // 0 = unset; 128 remaps TQ2_0 -> TQ2_0_128
 
     int arg_idx = 1;
     std::string imatrix_file;
@@ -466,6 +470,20 @@ int llama_quantize(int argc, char ** argv) {
             }
         } else if (strcmp(argv[arg_idx], "--keep-split") == 0) {
             params.keep_split = true;
+        } else if (strcmp(argv[arg_idx], "--block-size") == 0) {
+            if (arg_idx >= argc - 1) {
+                usage(argv[0]);
+            }
+            try {
+                tq2_block_size = std::stoi(argv[++arg_idx]);
+            } catch (const std::exception & e) {
+                fprintf(stderr, "%s: invalid block size '%s' (%s)\n", __func__, argv[arg_idx], e.what());
+                return 1;
+            }
+            if (tq2_block_size != 128 && tq2_block_size != 256) {
+                fprintf(stderr, "%s: block size must be 128 or 256\n", __func__);
+                return 1;
+            }
         } else {
             usage(argv[0]);
         }
@@ -590,6 +608,19 @@ int llama_quantize(int argc, char ** argv) {
            params.only_copy = true;
         }
         arg_idx++;
+    }
+
+    if (tq2_block_size == 128) {
+        if (params.ftype == LLAMA_FTYPE_MOSTLY_TQ2_0) {
+            params.ftype = LLAMA_FTYPE_MOSTLY_TQ2_0_128;
+            ftype_str = "TQ2_0_128";
+        } else if (params.ftype != LLAMA_FTYPE_MOSTLY_TQ2_0_128) {
+            fprintf(stderr, "%s: --block-size 128 is only valid with TQ2_0 or TQ2_0_128\n", __func__);
+            return 1;
+        }
+    } else if (tq2_block_size == 256 && params.ftype == LLAMA_FTYPE_MOSTLY_TQ2_0_128) {
+        fprintf(stderr, "%s: TQ2_0_128 uses block size 128; use TQ2_0 for block size 256\n", __func__);
+        return 1;
     }
 
     // parse nthreads

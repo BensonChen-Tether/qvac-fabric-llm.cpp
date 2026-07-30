@@ -24,6 +24,7 @@ class Keys:
         QUANTIZATION_VERSION       = "general.quantization_version"
         ALIGNMENT                  = "general.alignment"
         FILE_TYPE                  = "general.file_type"
+        TQ2_BLOCK_SIZE             = "general.tq2.block_size"
 
         # Recommended Sampler Parameters
         SAMPLING_SEQUENCE           = "general.sampling.sequence"
@@ -4533,6 +4534,15 @@ class GGMLQuantizationType(IntEnum):
     MXFP4   = 39
     NVFP4   = 40
     Q1_0    = 41
+    TBQ3_0    = 42
+    TBQ4_0    = 43
+    TBQ3_0_64 = 44
+    TBQ4_0_64 = 45
+    PQ3_0     = 46
+    PQ3_0_64  = 47
+    PQ4_0     = 48
+    PQ4_0_64  = 49
+    TQ2_0_128 = 50
 
 
 class ExpertGatingFuncType(IntEnum):
@@ -4588,6 +4598,7 @@ class LlamaFileType(IntEnum):
     MOSTLY_MXFP4_MOE     = 38  # except 1d tensors
     MOSTLY_NVFP4         = 39  # except 1d tensors
     MOSTLY_Q1_0          = 40  # except 1d tensors
+    MOSTLY_TQ2_0_128     = 41  # except 1d tensors
 
     GUESSED              = 1024  # not specified in the model file
 
@@ -4710,6 +4721,7 @@ GGML_QUANT_SIZES: dict[GGMLQuantizationType, tuple[int, int]] = {
     GGMLQuantizationType.BF16:    (1, 2),
     GGMLQuantizationType.TQ1_0:   (256, 2 + 4 * 13),
     GGMLQuantizationType.TQ2_0:   (256, 2 + 64),
+    GGMLQuantizationType.TQ2_0_128: (128, 2 + 32),
     GGMLQuantizationType.MXFP4:   (32, 1 + 16),
     GGMLQuantizationType.NVFP4:   (64, 4 + 32),
     GGMLQuantizationType.Q1_0:    (128, 2 + 16),

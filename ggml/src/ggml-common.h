@@ -270,12 +270,19 @@ typedef struct {
 } block_tq1_0;
 static_assert(sizeof(block_tq1_0) == sizeof(ggml_half) + QK_K / 64 + (QK_K - 4 * QK_K / 64) / 5, "wrong tq1_0 block size/padding");
 
-// 2.0625 bpw
+// 2.0625 bpw; default super-block size is QK_K (256). Block-128 is the alternate layout.
+#define QK_TQ2_0_128 128
 typedef struct {
     uint8_t qs[QK_K/4]; // 2 bits per element
     ggml_half d;
 } block_tq2_0;
 static_assert(sizeof(block_tq2_0) == sizeof(ggml_half) + QK_K / 4, "wrong tq2_0 block size/padding");
+
+typedef struct {
+    uint8_t qs[QK_TQ2_0_128/4]; // 2 bits per element
+    ggml_half d;
+} block_tq2_0_128;
+static_assert(sizeof(block_tq2_0_128) == sizeof(ggml_half) + QK_TQ2_0_128 / 4, "wrong tq2_0_128 block size/padding");
 
 //
 // Super-block quantization structures

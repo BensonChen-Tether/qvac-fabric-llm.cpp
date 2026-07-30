@@ -401,6 +401,12 @@ static const struct ggml_type_traits_cpu type_traits_cpu[GGML_TYPE_COUNT] = {
         .vec_dot_type             = GGML_TYPE_Q8_K,
         .nrows                    = 1,
     },
+    [GGML_TYPE_TQ2_0_128] = {
+        .from_float               = quantize_row_tq2_0_128,
+        .vec_dot                  = ggml_vec_dot_tq2_0_128_q8_0,
+        .vec_dot_type             = GGML_TYPE_Q8_0,
+        .nrows                    = 1,
+    },
     [GGML_TYPE_TBQ3_0] = {
         .from_float               = quantize_row_tbq3_0,
         .vec_dot                  = ggml_vec_dot_tbq3_0_q8_0,
@@ -478,6 +484,16 @@ static struct vec_dot_selection ggml_cpu_select_vec_dot(
             selection.vec_dot_type = GGML_TYPE_Q8_1;
         } else if (src1->type == GGML_TYPE_Q8_0) {
             selection.vec_dot      = ggml_vec_dot_tq2_0_q8_0;
+            selection.vec_dot_type = GGML_TYPE_Q8_0;
+        }
+    }
+
+    if (src0->type == GGML_TYPE_TQ2_0_128 && src1 != NULL) {
+        if (src1->type == GGML_TYPE_Q8_1) {
+            selection.vec_dot      = ggml_vec_dot_tq2_0_128_q8_1;
+            selection.vec_dot_type = GGML_TYPE_Q8_1;
+        } else if (src1->type == GGML_TYPE_Q8_0) {
+            selection.vec_dot      = ggml_vec_dot_tq2_0_128_q8_0;
             selection.vec_dot_type = GGML_TYPE_Q8_0;
         }
     }

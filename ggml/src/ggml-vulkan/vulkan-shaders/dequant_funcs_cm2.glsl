@@ -1241,6 +1241,28 @@ float16_t dequantFuncTQ2_0(const in decodeBufTQ2_0 bl, const in uint blockCoords
 }
 #endif
 
+#if defined(DATA_A_TQ2_0_128)
+layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufTQ2_0_128 {
+   block_tq2_0_128 block;
+};
+
+float16_t dequantFuncTQ2_0_128(const in decodeBufTQ2_0_128 bl, const in uint blockCoords[2], const in uint coordInBlock[2])
+{
+    const float16_t d = bl.block.d;
+    const uint idx = coordInBlock[1];
+
+    // Same 128-element / 32-byte packing as tq2_dequantize (see tq_utils.glsl).
+    const uint tq2_group = 128u;
+    const uint tq2_chunk = 32u;
+    const uint upper = idx / tq2_group;
+    const uint byte = (upper * tq2_chunk) + (idx % tq2_chunk);
+    const uint shift = ((idx % tq2_group) / tq2_chunk) * 2u;
+    const int val = (int(bl.block.qs[byte]) >> shift) & 3;
+
+    return d * float16_t(val - 1);
+}
+#endif
+
 #if defined(DATA_A_TQ1_0)
 layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufTQ1_0 {
    block_tq1_0 block;
@@ -1379,6 +1401,8 @@ f16vec4 dequantFuncNVFP4_v(const in decodeBufNVFP4 bl, const in uint blockCoords
 #define dequantFuncA_v dequantFuncQ8_0_v
 #elif defined(DATA_A_TQ2_0)
 #define dequantFuncA dequantFuncTQ2_0
+#elif defined(DATA_A_TQ2_0_128)
+#define dequantFuncA dequantFuncTQ2_0_128
 #elif defined(DATA_A_Q2_K)
 #define dequantFuncA dequantFuncQ2_K
 #define dequantFuncA_v dequantFuncQ2_K_v
@@ -1424,9 +1448,12 @@ f16vec4 dequantFuncNVFP4_v(const in decodeBufNVFP4 bl, const in uint blockCoords
 #define dequantFuncA_v dequantFuncIQ4_XS_v
 #elif defined(DATA_A_IQ4_NL)
 #define dequantFuncA dequantFuncIQ4_NL
+<<<<<<< HEAD
 #define dequantFuncA_v dequantFuncIQ4_NL_v
 #elif defined(DATA_A_TQ2_0)
 #define dequantFuncA dequantFuncTQ2_0
+=======
+>>>>>>> 19588bea7 (block 128)
 #elif defined(DATA_A_TQ1_0)
 #define dequantFuncA dequantFuncTQ1_0
 #elif defined(DATA_A_MXFP4)
