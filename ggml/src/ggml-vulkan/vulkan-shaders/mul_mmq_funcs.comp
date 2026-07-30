@@ -86,27 +86,32 @@ ACC_TYPE mul_q8_1(const int32_t q_sum, const float da, const vec2 dsb, const int
 }
 #endif
 
-#if defined(DATA_A_TQ2_0)
+#if defined(DATA_A_TQ2_0) || defined(DATA_A_TQ2_0_128)
 i32vec2 repack(uint ib, uint iqs) {
+    // Fixed 128-element groups in 32 qs bytes (same layout for TQ2_0 and TQ2_0_128).
+    const uint tq2_half_shift  = 7u;
+    const uint tq2_chunk       = 32u;
+    const uint tq2_half_offset = 16u;
+
     const uint k00 = iqs + 0u;
-    const uint ip00 = ((k00 >> 7) & 1u) * 32u;
-    const uint b00 = (k00 & 31u) + ip00;
-    const uint s00 = ((k00 >> 5) & 3u) * 2u;
+    const uint ip00 = ((k00 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b00 = (k00 & (tq2_chunk - 1u)) + ip00;
+    const uint s00 = ((k00 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
     const uint k01 = iqs + 1u;
-    const uint ip01 = ((k01 >> 7) & 1u) * 32u;
-    const uint b01 = (k01 & 31u) + ip01;
-    const uint s01 = ((k01 >> 5) & 3u) * 2u;
+    const uint ip01 = ((k01 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b01 = (k01 & (tq2_chunk - 1u)) + ip01;
+    const uint s01 = ((k01 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
     const uint k02 = iqs + 2u;
-    const uint ip02 = ((k02 >> 7) & 1u) * 32u;
-    const uint b02 = (k02 & 31u) + ip02;
-    const uint s02 = ((k02 >> 5) & 3u) * 2u;
+    const uint ip02 = ((k02 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b02 = (k02 & (tq2_chunk - 1u)) + ip02;
+    const uint s02 = ((k02 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
     const uint k03 = iqs + 3u;
-    const uint ip03 = ((k03 >> 7) & 1u) * 32u;
-    const uint b03 = (k03 & 31u) + ip03;
-    const uint s03 = ((k03 >> 5) & 3u) * 2u;
+    const uint ip03 = ((k03 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b03 = (k03 & (tq2_chunk - 1u)) + ip03;
+    const uint s03 = ((k03 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
     const int q00 = int(data_a[ib].qs[b00]);
     const int q01 = int(data_a[ib].qs[b01]);
@@ -121,25 +126,25 @@ i32vec2 repack(uint ib, uint iqs) {
     const int v0 = (t00 & 0xFF) | ((t01 & 0xFF) << 8) | ((t02 & 0xFF) << 16) | ((t03 & 0xFF) << 24);
 
 
-    const uint k10 = iqs + 16u + 0u;
-    const uint ip10 = ((k10 >> 7) & 1u) * 32u;
-    const uint b10 = (k10 & 31u) + ip10;
-    const uint s10 = ((k10 >> 5) & 3u) * 2u;
+    const uint k10 = iqs + tq2_half_offset + 0u;
+    const uint ip10 = ((k10 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b10 = (k10 & (tq2_chunk - 1u)) + ip10;
+    const uint s10 = ((k10 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
-    const uint k11 = iqs + 16u + 1u;
-    const uint ip11 = ((k11 >> 7) & 1u) * 32u;
-    const uint b11 = (k11 & 31u) + ip11;
-    const uint s11 = ((k11 >> 5) & 3u) * 2u;
+    const uint k11 = iqs + tq2_half_offset + 1u;
+    const uint ip11 = ((k11 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b11 = (k11 & (tq2_chunk - 1u)) + ip11;
+    const uint s11 = ((k11 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
-    const uint k12 = iqs + 16u + 2u;
-    const uint ip12 = ((k12 >> 7) & 1u) * 32u;
-    const uint b12 = (k12 & 31u) + ip12;
-    const uint s12 = ((k12 >> 5) & 3u) * 2u;
+    const uint k12 = iqs + tq2_half_offset + 2u;
+    const uint ip12 = ((k12 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b12 = (k12 & (tq2_chunk - 1u)) + ip12;
+    const uint s12 = ((k12 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
-    const uint k13 = iqs + 16u + 3u;
-    const uint ip13 = ((k13 >> 7) & 1u) * 32u;
-    const uint b13 = (k13 & 31u) + ip13;
-    const uint s13 = ((k13 >> 5) & 3u) * 2u;
+    const uint k13 = iqs + tq2_half_offset + 3u;
+    const uint ip13 = ((k13 >> tq2_half_shift) & 1u) * tq2_chunk;
+    const uint b13 = (k13 & (tq2_chunk - 1u)) + ip13;
+    const uint s13 = ((k13 >> (tq2_half_shift - 2u)) & 3u) * 2u;
 
     const int q10 = int(data_a[ib].qs[b10]);
     const int q11 = int(data_a[ib].qs[b11]);
@@ -223,7 +228,7 @@ ACC_TYPE mul_q8_1(const int32_t q_sum, const float da, const vec2 dsb, const int
 }
 #endif
 
-#if defined(DATA_A_TQ1_0) || defined(DATA_A_TQ2_0) || defined(DATA_A_Q4_0) || defined(DATA_A_Q5_0) || defined(DATA_A_Q8_0) || defined(DATA_A_IQ1_S) || defined(DATA_A_IQ2_XXS) || defined(DATA_A_IQ2_XS) || defined(DATA_A_IQ2_S) || defined(DATA_A_IQ3_XXS) || defined(DATA_A_IQ3_S) || defined(DATA_A_IQ4_XS) || defined(DATA_A_IQ4_NL)
+#if defined(DATA_A_TQ1_0) || defined(DATA_A_TQ2_0) || defined(DATA_A_TQ2_0_128) || defined(DATA_A_Q4_0) || defined(DATA_A_Q5_0) || defined(DATA_A_Q8_0) || defined(DATA_A_IQ1_S) || defined(DATA_A_IQ2_XXS) || defined(DATA_A_IQ2_XS) || defined(DATA_A_IQ2_S) || defined(DATA_A_IQ3_XXS) || defined(DATA_A_IQ3_S) || defined(DATA_A_IQ4_XS) || defined(DATA_A_IQ4_NL)
 FLOAT_TYPE get_d(uint ib) {
     return FLOAT_TYPE(data_a[ib].d);
 }

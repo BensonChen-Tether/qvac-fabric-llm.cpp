@@ -33,7 +33,7 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
             FLOAT_TYPE acc = 0.0f;
             for (uint i = tid/8; i < num_blocks_per_row; i+=gl_WorkGroupSize.x/8) {
                 const float d = float(data_a[ib0 + i].d);
-                [[unroll]] for (uint j = 0; j < 64; j += 32) {
+                [[unroll]] for (uint j = 0; j < QUANT_K / 4u; j += 32) {
                     [[unroll]] for (uint l = 0; l < 4; l+=2) {
                         uint k = (tid % 8) * 4;
 

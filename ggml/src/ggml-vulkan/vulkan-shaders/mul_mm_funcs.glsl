@@ -1,4 +1,4 @@
-#if defined(DATA_A_TQ2_0) || \
+#if defined(DATA_A_TQ2_0) || defined(DATA_A_TQ2_0_128) || \
     defined(DATA_A_TBQ3_0) || defined(DATA_A_PQ3_0) || \
     defined(DATA_A_TBQ4_0) || defined(DATA_A_PQ4_0) || \
     defined(DATA_A_TBQ3_0_64) || defined(DATA_A_PQ3_0_64) || \
@@ -194,12 +194,13 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
             buf_a[buf_idx + 1] = FLOAT_TYPEV2((bits & 0x04u) != 0u ? d : -d, (bits & 0x08u) != 0u ? d : -d);
             buf_a[buf_idx + 2] = FLOAT_TYPEV2((bits & 0x10u) != 0u ? d : -d, (bits & 0x20u) != 0u ? d : -d);
             buf_a[buf_idx + 3] = FLOAT_TYPEV2((bits & 0x40u) != 0u ? d : -d, (bits & 0x80u) != 0u ? d : -d);
-#elif defined(DATA_A_TQ2_0)
+#elif defined(DATA_A_TQ2_0) || defined(DATA_A_TQ2_0_128)
             const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
             const uint buf_idx = col * SHMEM_STRIDE + row * LOAD_VEC_A / 2;
 
-            const uint ib = idx / 128;                 // 2 values per idx
-            const uint iqs = idx % 128;                // 0..127
+            const uint half_k = QUANT_K / 2u;
+            const uint ib = idx / half_k;
+            const uint iqs = idx % half_k;
 
             const float d = float(data_a[ib].d);
 

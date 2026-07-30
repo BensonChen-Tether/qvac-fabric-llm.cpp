@@ -22,12 +22,19 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
         }
     }
 
-    [[unroll]] for (uint i = tid / (QUANT_K / 8); i < num_blocks_per_row; i += gl_WorkGroupSize.x / (QUANT_K / 8)) {
+    // 32 threads per block: matches the 32-byte qs packing group used by both
+    // TQ2_0 (K=256 → 8 elems/thread) and TQ2_0_128 (K=128 → 4 elems/thread).
+    // Using QUANT_K/8 for K=128 yields only 16 active threads and a divergent
+    // [[unroll]] start index, which zeros results when num_blocks_per_row == 1.
+    const uint tq2_nth = 32u;
+    const uint tq2_ept = QUANT_K / tq2_nth;
+
+    [[unroll]] for (uint i = tid / tq2_nth; i < num_blocks_per_row; i += gl_WorkGroupSize.x / tq2_nth) {
         [[unroll]] for (uint n = 0; n < num_rows; ++n) {
             const uint ib0 = a_offset / QUANT_K + (first_row + n) * num_blocks_per_row;
             const FLOAT_TYPE d = FLOAT_TYPE(data_a[ib0 + i].d);
 
-            [[unroll]] for (uint e = (tid % (QUANT_K / 8)) * 8; e < (tid % (QUANT_K / 8)) * 8 + 8; e++) {
+            [[unroll]] for (uint e = (tid % tq2_nth) * tq2_ept; e < (tid % tq2_nth) * tq2_ept + tq2_ept; e++) {
                 const FLOAT_TYPE dequant_val = d * FLOAT_TYPE(tq2_dequantize(ib0 + i, e));
 
                 [[unroll]] for (uint jcol = 0; jcol < NUM_COLS; ++jcol) {

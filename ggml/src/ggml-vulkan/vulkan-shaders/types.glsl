@@ -1731,6 +1731,23 @@ struct block_tq2_0
 #define A_TYPE block_tq2_0
 #endif
 
+// TQ2_0_128 (ternarization, block=128)
+#define QUANT_K_TQ2_0_128 128
+#define QUANT_R_TQ2_0_128 4
+
+struct block_tq2_0_128
+{
+    uint8_t qs[QUANT_K_TQ2_0_128/QUANT_R_TQ2_0_128];  // 128/4 = 32 bytes
+    float16_t d;
+};
+
+#if defined(DATA_A_TQ2_0_128)
+#define QUANT_K QUANT_K_TQ2_0_128
+#define QUANT_R QUANT_R_TQ2_0_128
+#define QUANT_AUXF 1
+#define A_TYPE block_tq2_0_128
+#endif
+
 // TBQ3_0 (TurboQuant 3-bit, block=128)
 #define QUANT_K_TBQ3_0 128
 #define QUANT_R_TBQ3_0 1
