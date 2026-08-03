@@ -29,7 +29,8 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
     for (uint jcol = 0; jcol < NUM_COLS; jcol++) {
         const uint b_base = (jcol * p.batch_stride_b);
         for (uint n = 0; n < num_rows; ++n) {
-            const uint ib0 = a_offset / QUANT_K + (first_row + n) * num_blocks_per_row;
+            // a_offset is already expressed in TQ2 blocks by get_offsets().
+            const uint ib0 = a_offset + (first_row + n) * num_blocks_per_row;
             FLOAT_TYPE acc = 0.0f;
             for (uint i = tid/8; i < num_blocks_per_row; i+=gl_WorkGroupSize.x/8) {
                 const float d = float(data_a[ib0 + i].d);
@@ -54,18 +55,20 @@ void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
                         const uint b1_idx = i * QUANT_K + j * 4 + (l+1) * 32;
 
                         // Not checking for OOB since we're guaranteed to be multiple of 256
-                        const uint b0_block_idx = b_offset + (b_base + b0_idx) / QUANT_K_Q8_1;
-                        const uint b1_block_idx = b_offset + (b_base + b1_idx) / QUANT_K_Q8_1;
+                        // b_offset is in scalar elements while data_b is an
+                        // array of four packed Q8_1 blocks.
+                        const uint b0_block_idx = (b_offset + b_base + b0_idx) / QUANT_K_Q8_1;
+                        const uint b1_block_idx = (b_offset + b_base + b1_idx) / QUANT_K_Q8_1;
                         const uint b0_block_idx_outer = b0_block_idx / 4;
                         const uint b1_block_idx_outer = b1_block_idx / 4;
                         const uint b0_block_idx_inner = b0_block_idx % 4;
                         const uint b1_block_idx_inner = b1_block_idx % 4;
-                        vec2 ds0 = vec2(data_b[b_offset + b0_block_idx_outer].ds[b0_block_idx_inner]);
-                        vec2 ds1 = vec2(data_b[b_offset + b1_block_idx_outer].ds[b1_block_idx_inner]);
+                        vec2 ds0 = vec2(data_b[b0_block_idx_outer].ds[b0_block_idx_inner]);
+                        vec2 ds1 = vec2(data_b[b1_block_idx_outer].ds[b1_block_idx_inner]);
 
                         const uint vec_idx = k / 4;
-                        int32_t b0_packed = data_b[b_offset + b0_block_idx_outer].qs[b0_block_idx_inner * 8 + vec_idx];
-                        int32_t b1_packed = data_b[b_offset + b1_block_idx_outer].qs[b1_block_idx_inner * 8 + vec_idx];
+                        int32_t b0_packed = data_b[b0_block_idx_outer].qs[b0_block_idx_inner * 8 + vec_idx];
+                        int32_t b1_packed = data_b[b1_block_idx_outer].qs[b1_block_idx_inner * 8 + vec_idx];
 
                         int32_t q0_sum = dotPacked4x8EXT(a0_packed, b0_packed);
                         int32_t q1_sum = dotPacked4x8EXT(a1_packed, b1_packed);
