@@ -8369,6 +8369,10 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     }
 
     test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_F16, GGML_TYPE_F32, 1, 1, false, 8, 16, 1));
+    // Decode-shaped routed-expert coverage for the Metal and Vulkan TQ2_0
+    // MUL_MAT_ID matvec paths (8 active experts, one token).
+    test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_TQ2_0, GGML_TYPE_F32, 8, 8, false, 512, 1, 256));
+    test_cases.emplace_back(new test_mul_mat_id_fusion(GGML_TYPE_TQ2_0, GGML_TYPE_F32, 8, 8, false, 512, 1, 256, 1));
     test_cases.emplace_back(new test_mul_mat_id_fusion(GGML_TYPE_F16, GGML_TYPE_F32, 16, 16, false, 32, 32, 32, 3));
 
     // gpt-oss issue with Vulkan mmq_id
