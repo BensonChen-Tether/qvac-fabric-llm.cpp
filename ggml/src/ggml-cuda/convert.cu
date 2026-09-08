@@ -307,6 +307,23 @@ static __global__ void dequantize_block_tq2_0(const void * __restrict__ vx, dst_
     y[l + 96] = d * ((q >> 6) & 3) - d;
 }
 
+// TQ2_0_128 holds a single 32-byte group, so one thread per byte covers the
+// block: byte l carries elements l, l+32, l+64 and l+96, matching
+// quantize_row_tq2_0_128_ref.
+template<typename dst_t>
+static __global__ void dequantize_block_tq2_0_128(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+    const int64_t i = blockIdx.x;
+    const block_tq2_0_128 * x = (const block_tq2_0_128 *) vx;
+    const int64_t l = threadIdx.x;
+    const uint8_t q = x[i].qs[l];
+    dst_t * y = yy + i*QK_TQ2_0_128;
+    const float d = __half2float(x[i].d);
+    y[l + 0]  = d * ((q >> 0) & 3) - d;
+    y[l + 32] = d * ((q >> 2) & 3) - d;
+    y[l + 64] = d * ((q >> 4) & 3) - d;
+    y[l + 96] = d * ((q >> 6) & 3) - d;
+}
+
 template<typename dst_t>
 static __global__ void dequantize_block_iq2_xxs(const void * __restrict__ vx, dst_t * __restrict__ yy) {
 
@@ -580,6 +597,12 @@ static void dequantize_row_tq2_0_cuda(const void * vx, dst_t * y, const int64_t 
 }
 
 template<typename dst_t>
+static void dequantize_row_tq2_0_128_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
+    const int nb = k / QK_TQ2_0_128;
+    dequantize_block_tq2_0_128<<<nb, 32, 0, stream>>>(vx, y);
+}
+
+template<typename dst_t>
 static void dequantize_row_iq2_xxs_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
     const int nb = k / QK_K;
     dequantize_block_iq2_xxs<<<nb, 32, 0, stream>>>(vx, y);
@@ -760,6 +783,8 @@ to_fp16_cuda_t ggml_get_to_fp16_cuda(ggml_type type) {
             return dequantize_row_q6_K_cuda;
         case GGML_TYPE_TQ2_0:
             return dequantize_row_tq2_0_cuda;
+        case GGML_TYPE_TQ2_0_128:
+            return dequantize_row_tq2_0_128_cuda;
         case GGML_TYPE_IQ2_XXS:
             return dequantize_row_iq2_xxs_cuda;
         case GGML_TYPE_IQ2_XS:
@@ -817,6 +842,8 @@ to_fp32_cuda_t ggml_get_to_fp32_cuda(ggml_type type) {
             return dequantize_row_q6_K_cuda;
         case GGML_TYPE_TQ2_0:
             return dequantize_row_tq2_0_cuda;
+        case GGML_TYPE_TQ2_0_128:
+            return dequantize_row_tq2_0_128_cuda;
         case GGML_TYPE_IQ2_XXS:
             return dequantize_row_iq2_xxs_cuda;
         case GGML_TYPE_IQ2_XS:

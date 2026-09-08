@@ -677,6 +677,9 @@ static __device__ __forceinline__ float vec_dot_q6_K_q8_1_impl_mmq(
 #define VDR_TQ2_0_Q8_1_MMVQ 2
 #define VDR_TQ2_0_Q8_1_MMQ  8
 
+#define VDR_TQ2_0_128_Q8_1_MMVQ 2
+#define VDR_TQ2_0_128_Q8_1_MMQ  8
+
 template <int vdr>
 static __device__ __forceinline__ float vec_dot_tq2_0_q8_1_impl(
         const int * __restrict__ v, const int * __restrict__ u,
@@ -1030,6 +1033,37 @@ static __device__ __forceinline__ float vec_dot_tq2_0_q8_1(
     }
 
     return vec_dot_tq2_0_q8_1_impl<VDR_TQ2_0_Q8_1_MMVQ>(v, u, btq2_0->d, d8);
+}
+
+// Same body as vec_dot_tq2_0_q8_1. A TQ2_0_128 block is one 32-byte group, so
+// with qi = 8 the framework hands us 4 q8_1 blocks instead of 8 and
+// bq8_offset evaluates to 0 for every iqs the mmvq kernel produces.
+static __device__ __forceinline__ float vec_dot_tq2_0_128_q8_1(
+        const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1,
+        const int & kbx, const int & iqs) {
+    const block_tq2_0_128 * btq2_0 = (const block_tq2_0_128 *) vbq + kbx;
+    const int bq8_offset = QR2_0 * (iqs / 8);
+
+    int v[VDR_TQ2_0_128_Q8_1_MMVQ];
+    int u[QR2_0*VDR_TQ2_0_128_Q8_1_MMVQ];
+    float d8[QR2_0];
+
+#pragma unroll
+    for (int i = 0; i < VDR_TQ2_0_128_Q8_1_MMVQ; ++i) {
+        v[i] = get_int_b2(btq2_0->qs, iqs + i);
+    }
+
+#pragma unroll
+    for (int i0 = 0; i0 < QR2_0; ++i0) {
+        const block_q8_1 * bq8i = bq8_1 + bq8_offset + i0;
+#pragma unroll
+        for (int i = 0; i < VDR_TQ2_0_128_Q8_1_MMVQ; ++i) {
+            u[VDR_TQ2_0_128_Q8_1_MMVQ*i0 + i] = get_int_b4(bq8i->qs, (iqs % QI8_1) + i);
+        }
+        d8[i0] = __low2float(bq8i->ds);
+    }
+
+    return vec_dot_tq2_0_q8_1_impl<VDR_TQ2_0_128_Q8_1_MMVQ>(v, u, btq2_0->d, d8);
 }
 
 #define VDR_IQ2_XXS_Q8_1_MMVQ 2

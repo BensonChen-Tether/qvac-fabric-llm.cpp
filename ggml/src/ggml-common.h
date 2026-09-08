@@ -139,6 +139,10 @@ typedef sycl::half2 ggml_half2;
 #define QI2_0 (QK_K / (4*QR2_0))
 #define QR2_0 4
 
+// TQ2_0_128 is one 32-byte group of a TQ2_0 block with its own scale, so the
+// packing ratio is identical and only the element count changes.
+#define QI2_0_128 (QK_TQ2_0_128 / (4*QR2_0))
+
 #define QI2_XXS (QK_K / (4*QR2_XXS))
 #define QR2_XXS 4
 
