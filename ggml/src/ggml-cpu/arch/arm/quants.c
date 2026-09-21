@@ -1616,6 +1616,64 @@ void ggml_vec_dot_tq2_0_q8_1(int n, float * GGML_RESTRICT s, size_t bs, const vo
     ggml_vec_dot_tq2_0_q8_1_generic(n, s, bs, vx, bx, vy, by, nrc);
 }
 
+void ggml_vec_dot_tq2_0_128_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
+
+#if defined(__ARM_NEON) && defined(__ARM_FEATURE_DOTPROD)
+    // One tq2_0_128 block is 128 weights in 32 bytes: byte k holds weights k, k+32,
+    // k+64 and k+96 in bits 0-1, 2-3, 4-5 and 6-7. Each 32-weight plane pairs with one
+    // q8_0 block. Codes 0/1/2 map to -1/0/+1.
+    GGML_ASSERT(n % QK_TQ2_0_128 == 0);
+    const int nb = n / QK_TQ2_0_128;
+
+    const block_tq2_0_128 * GGML_RESTRICT x = vx;
+    const block_q8_0      * GGML_RESTRICT y = vy;
+
+    const uint8x16_t m3  = vdupq_n_u8(3);
+    const int8x16_t  one = vdupq_n_s8(1);
+
+    float sumf = 0.0f;
+
+    for (int ib = 0; ib < nb; ++ib) {
+        const float dx = GGML_CPU_FP16_TO_FP32(x[ib].d);
+        const block_q8_0 * GGML_RESTRICT yb = y + ib * (QK_TQ2_0_128 / QK8_0);
+
+        const uint8x16_t qx0 = vld1q_u8(x[ib].qs);
+        const uint8x16_t qx1 = vld1q_u8(x[ib].qs + 16);
+
+        int8x16_t w[8];
+        w[0] = vsubq_s8(vreinterpretq_s8_u8(vandq_u8(qx0,                m3)), one);
+        w[1] = vsubq_s8(vreinterpretq_s8_u8(vandq_u8(qx1,                m3)), one);
+        w[2] = vsubq_s8(vreinterpretq_s8_u8(vandq_u8(vshrq_n_u8(qx0, 2), m3)), one);
+        w[3] = vsubq_s8(vreinterpretq_s8_u8(vandq_u8(vshrq_n_u8(qx1, 2), m3)), one);
+        w[4] = vsubq_s8(vreinterpretq_s8_u8(vandq_u8(vshrq_n_u8(qx0, 4), m3)), one);
+        w[5] = vsubq_s8(vreinterpretq_s8_u8(vandq_u8(vshrq_n_u8(qx1, 4), m3)), one);
+        w[6] = vsubq_s8(vreinterpretq_s8_u8(                 vshrq_n_u8(qx0, 6)      ), one);
+        w[7] = vsubq_s8(vreinterpretq_s8_u8(                 vshrq_n_u8(qx1, 6)      ), one);
+
+        for (int l = 0; l < 4; ++l) {
+            const int8x16_t qy0 = vld1q_s8(yb[l].qs);
+            const int8x16_t qy1 = vld1q_s8(yb[l].qs + 16);
+
+            int32x4_t p = vdotq_s32(vdupq_n_s32(0), w[2*l], qy0);
+            p = vdotq_s32(p, w[2*l + 1], qy1);
+
+            // same expression and order as the generic path, so results are bit-exact
+            const float dy = GGML_CPU_FP16_TO_FP32(yb[l].d);
+            sumf += (float) vaddvq_s32(p) * dx * dy;
+        }
+    }
+
+    *s = sumf;
+#else
+    ggml_vec_dot_tq2_0_128_q8_0_generic(n, s, bs, vx, bx, vy, by, nrc);
+#endif
+}
+
 void ggml_vec_dot_q2_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
