@@ -16298,7 +16298,18 @@ static ggml_status ggml_backend_vk_graph_compute(ggml_backend_t backend, ggml_cg
     // Estimate the amount of matmul work by looking at the weight matrix size, and submit every 100MB
     // (and scaled down based on model size, so smaller models submit earlier).
     // Also submit at least every 100 nodes, in case there are workloads without as much matmul.
+    //
+    // Adreno reports a hard GPU hang (VK_ERROR_DEVICE_LOST) when many nodes share one
+    // command buffer. LoRA training hits this after a minute or two of continuous
+    // submits. Flush every node; GGML_VK_MAX_NODES_PER_SUBMIT overrides this.
+    // 0 means the current node is submitted immediately (submitted_nodes >= 0).
     int nodes_per_submit = 100;
+    if (ctx->device->architecture == vk_device_architecture::QUALCOMM_ADRENO) {
+        nodes_per_submit = 0;
+    }
+    if (const char * env = getenv("GGML_VK_MAX_NODES_PER_SUBMIT")) {
+        nodes_per_submit = std::max(0, atoi(env));
+    }
     int submitted_nodes = 0;
     int submit_count = 0;
     uint64_t mul_mat_bytes = 0;
