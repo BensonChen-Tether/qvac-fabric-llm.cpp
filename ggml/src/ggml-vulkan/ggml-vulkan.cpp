@@ -11176,8 +11176,12 @@ static vk_pipeline ggml_vk_op_get_pipeline(ggml_backend_vk_context * ctx, const 
             return nullptr;
         }
     case GGML_OP_OUT_PROD:
-        // Use a tiled shader for AMD RADV on embedded GPUs to avoid VK_ERROR_DEVICE_LOST due to slow threads.
-        if (ctx->device->uma && ctx->device->driver_id == vk::DriverId::eMesaRadv &&
+        // The naive shader gives each thread the entire K reduction. On RADV
+        // embedded GPUs and Adreno that loop is long enough (vocab-sized K in
+        // the output-layer backward) to hang the GPU and return DEVICE_LOST.
+        // The tiled shader keeps each thread's work inside a 32-wide tile.
+        if ((ctx->device->architecture == vk_device_architecture::QUALCOMM_ADRENO ||
+             (ctx->device->uma && ctx->device->driver_id == vk::DriverId::eMesaRadv)) &&
             src1->type == GGML_TYPE_F32 && dst->type == GGML_TYPE_F32) {
             if (src0->type == GGML_TYPE_F32) return ctx->device->pipeline_out_prod_tiled_f32;
             if (src0->type == GGML_TYPE_F16) return ctx->device->pipeline_out_prod_tiled_f16_f32;
